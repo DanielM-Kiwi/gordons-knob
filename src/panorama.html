@@ -226,19 +226,23 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
    PANORAMA.lowestView: how far down (degrees) the bottom of the screen may look.
    ========================================================================= */
 /* The stitched band is stored in two halves (u = 0 at the band's left edge, 1 at its right),
-   each padded so neighbouring texels exist across the joins. BAND_YAW rotates the whole
-   band onto true north; it was fixed from where the Tasman Bay coastline appears. */
-const BAND_YAW = -9.5;
+   each padded so neighbouring texels exist across the joins.
+   CAL maps band coordinates onto true bearing and elevation, as Fourier series in the band
+   bearing (degrees): true bearing = band + bearing(band); band elevation = true + elev(band).
+   It was solved from 12 landmarks placed by eye in the calibration page plus the far skyline
+   matched against the elevation model; landmarks land within ~0.3° (towns within ~2°). */
+const CAL = { bearing: [-9.3225, -1.5425, -0.2896, -2.5352, -2.0409, 0.0568, -0.4781], elev: [-0.0977, 0.3481, -0.0139, -0.1919, -0.3502] };
 const PANORAMA = {
   tiles: [ { src: "__PANO_A__", u0: -64 / 18032, u1: 0.5 + 64 / 18032 }, { src: "__PANO_B__", u0: 0.5 - 64 / 18032, u1: 1 + 64 / 18032 } ],
   patch: { src: "__CREW_PATCH__", b0: 176, b1: 193.5, e0: -9.5, e1: 1 },
-  image: true, centreBearing: 180 + BAND_YAW, horizonOffset: 0,
+  image: true, centreBearing: 180, horizonOffset: 0,
   top: 20, bottom: -27, zenith: [38, 92, 179], nadir: [104, 95, 75], lowestView: -25,
 };
 
-/* Camera position: the 1685 m trig on the Gordon Range, where the walk ended, georeferenced
-   from the Topo50 spot heights. Gordons Knob itself (1592 m) is 880 m to the west-north-west. */
-const VIEWPOINT = { name: "Point 1685", lat: -41.60985, lon: 172.94482, height: 1685, eye: 1.6 };
+/* Camera position: beside the 1685 m trig on the Gordon Range, where the walk ended (the trig is
+   georeferenced from the Topo50 spot heights; the calibration puts the camera ~17 m ESE of it and
+   ~12 m lower). Gordons Knob itself (1592 m) is 880 m to the west-north-west. */
+const VIEWPOINT = { name: "Point 1685", lat: -41.609916, lon: 172.945006, height: 1672.8, eye: 1.6 };
 
 /* Photos taken on the day, pinned where they were taken looking. */
 /* The walk up, traced from the Topo50 map and draped on the 14 m elevation model:
@@ -246,9 +250,9 @@ const VIEWPOINT = { name: "Point 1685", lat: -41.60985, lon: 172.94482, height: 
 const ROUTE = __ROUTE__;
 
 const PHOTOS = [
-  { name: "The summit crew", bearing: 184.6 + BAND_YAW, elev: -0.2, src: "__PHOTO_CREW__",
+  { name: "The summit crew", band: [184.57, -1.4], src: "__PHOTO_CREW__",
     caption: "On the knoll south of the summit, with the snow-capped St Arnaud and Travers ranges behind. This photo is blended into the panorama." },
-  { name: "Toward Motueka", bearing: 28.6 + BAND_YAW, elev: -5, src: "__PHOTO_MOT__",
+  { name: "Toward Motueka", band: [28.6, -5], src: "__PHOTO_MOT__",
     caption: "Down the Wairoa side toward the Motueka valley, Tasman Bay and the coast." },
 ];
 
@@ -298,6 +302,10 @@ const DEM_B64 = "__DEM_B64__";
 "use strict";
 const D2R = Math.PI / 180, R2D = 180 / Math.PI, TAU = Math.PI * 2;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fourier = (c, b) => { const r = b * Math.PI / 180; let v = c[0]; for (let k = 1; 2 * k < c.length; k++) v += c[2 * k - 1] * Math.sin(k * r) + c[2 * k] * Math.cos(k * r); return v; };
+const mod360 = (x) => ((x % 360) + 360) % 360;
+const bandToTrue = (b, e) => [mod360(b + fourier(CAL.bearing, b)), e - fourier(CAL.elev, b)];
+const trueToBand = (az, el) => { let b = az - CAL.bearing[0]; for (let i = 0; i < 6; i++) b = az - fourier(CAL.bearing, b); b = mod360(b); return [b, el + fourier(CAL.elev, b)]; };
 const $ = (id) => document.getElementById(id);
 
 /* ---------------- Elevation model ---------------- */
@@ -482,6 +490,9 @@ const FS = `#version 300 es
 precision highp float;
 uniform sampler2D texA, texB, texP; uniform vec2 res; uniform float yaw, pitch, tanHalf, centre, hOff, vTop, vBot;
 uniform vec4 tileA, tileB, patchR; uniform float hasPatch;
+uniform float calB[7]; uniform float calE[5];
+float fB(float b){ return calB[0] + calB[1]*sin(b) + calB[2]*cos(b) + calB[3]*sin(2.*b) + calB[4]*cos(2.*b) + calB[5]*sin(3.*b) + calB[6]*cos(3.*b); }
+float fE(float b){ return calE[0] + calE[1]*sin(b) + calE[2]*cos(b) + calE[3]*sin(2.*b) + calE[4]*cos(2.*b); }
 uniform vec3 zen, nad;
 out vec4 o;
 const float PI = 3.141592653589793;
@@ -492,7 +503,12 @@ void main(){
   d = vec3(d.x, d.y * cp + d.z * sp, -d.y * sp + d.z * cp);
   float az = yaw + atan(d.x, d.z);
   float el = asin(clamp(d.y, -1., 1.)) - hOff;
-  vec2 uv = vec2(fract((az - centre) / (2. * PI) + .5), clamp((vTop - el) / (vTop - vBot), .0004, .9996));
+  // true direction -> band coordinates (CAL, degrees in the series)
+  float bb = az - radians(calB[0]);
+  for (int i = 0; i < 4; i++) bb = az - radians(fB(bb));
+  float elt = el;
+  el = elt + radians(fE(bb));
+  vec2 uv = vec2(fract((bb - centre) / (2. * PI) + .5), clamp((vTop - el) / (vTop - vBot), .0004, .9996));
   vec2 dx = dFdx(uv), dy = dFdy(uv);
   dx.x -= floor(dx.x + .5); dy.x -= floor(dy.x + .5);
   vec3 c;
@@ -523,7 +539,7 @@ function initGL() {
   const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  for (const n of ["texA", "texB", "texP", "tileA", "tileB", "patchR", "hasPatch", "res", "yaw", "pitch", "tanHalf", "centre", "hOff", "vTop", "vBot", "zen", "nad"]) uni[n] = gl.getUniformLocation(prog, n);
+  for (const n of ["texA", "texB", "texP", "tileA", "tileB", "patchR", "hasPatch", "calB", "calE", "res", "yaw", "pitch", "tanHalf", "centre", "hOff", "vTop", "vBot", "zen", "nad"]) uni[n] = gl.getUniformLocation(prog, n);
   const af = gl.getExtension("EXT_texture_filter_anisotropic");
   ["texA", "texB", "texP"].forEach((n, unit) => {
     gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
@@ -535,6 +551,7 @@ function initGL() {
     gl.uniform1i(uni[n], unit);
   });
   gl.uniform1f(uni.hasPatch, 0);
+  gl.uniform1fv(uni.calB, new Float32Array([0, 0, 0, 0, 0, 0, 0])); gl.uniform1fv(uni.calE, new Float32Array([0, 0, 0, 0, 0]));
 }
 // unit: 0/1 band halves, 2 detail patch. Oversized images are scaled to the GPU's limit.
 function upload(src, unit) {
@@ -604,7 +621,8 @@ PHOTOS.forEach((ph) => {
     <span><span class="nm">${ph.name}</span><span class="sub">Photo · open</span></span></button>`;
   el.querySelector("button").addEventListener("click", (ev) => { ev.stopPropagation(); openPhoto(ph); });
   poiLayer.appendChild(el);
-  Object.assign(ph, { el, elev: ph.elev * D2R, onScreen: false, lastSeen: -1e9 });
+  const [tb, te] = bandToTrue(ph.band[0], ph.band[1]);
+  Object.assign(ph, { el, bearing: tb, elev: te * D2R, onScreen: false, lastSeen: -1e9 });
 });
 const MARKERS = [...POIS, ...PHOTOS];
 const lb = $("lb");
@@ -907,14 +925,14 @@ function drawRoute(now) {
   c.lineCap = "round"; c.lineJoin = "round";
   let prev = null;
   for (let i = 0; i <= last; i++) {
-    const p = RP[i]; if (p.d < 25) { prev = null; continue; }
+    const p = RP[i]; if (p.d < 45) { prev = null; continue; }
     const s = project(p.b, p.el);
     if (!s || s[0] < -200 || s[0] > W + 200 || s[1] < -200 || s[1] > H + 200) { prev = null; continue; }
     if (prev) {
       const w = Math.max(1, Math.min(5.5, 320 / p.d)) * zoom;
       const hid = !(p.vis && prev.p.vis);
       if (hid) {
-        c.setLineDash([w * 0.9, w * 2.6]); c.strokeStyle = "rgba(255,92,112,.78)"; c.lineWidth = w * 0.75;
+        const wh = Math.min(w * 0.7, 2.6); c.setLineDash([wh * 1.2, wh * 3]); c.strokeStyle = "rgba(255,92,112,.7)"; c.lineWidth = wh;
       } else {
         c.setLineDash([]); c.strokeStyle = "rgba(255,255,255,.45)"; c.lineWidth = w + 1.8;
         c.beginPath(); c.moveTo(prev.s[0], prev.s[1]); c.lineTo(s[0], s[1]); c.stroke();
@@ -966,7 +984,7 @@ function frame(now) {
   view.pitch = clampPitch(view.pitch);
   const shown = [];
   for (const p of MARKERS) {
-    const s = texReady ? (p.calib ? project(p.calib.b + BAND_YAW, p.calib.e * D2R) : project(p.bearing, p.elev + hOff)) : null;
+    const s = texReady ? (p.calib ? (([b, e]) => project(b, e * D2R))(bandToTrue(p.calib.b, p.calib.e)) : project(p.bearing, p.elev + hOff)) : null;
     const vis = s && s[0] > -60 && s[0] < W + 60 && s[1] > -40 && s[1] < H + 220;
     if (vis) {
       p.el.style.transform = `translate3d(${s[0].toFixed(1)}px,${s[1].toFixed(1)}px,0)`;
@@ -997,7 +1015,7 @@ function frame(now) {
 
 /* ---------------- Calibration hook (calibration build only) ---------------- */
 const CALIBRATE = "__CALIBRATE__" === "1";
-if (CALIBRATE) window.__pano = { view, project, POIS, PHOTOS, flyTo, select, D2R, R2D, BAND_YAW, tanHalf, size: () => [W, H], canvas, poiLayer };
+if (CALIBRATE) window.__pano = { view, project, POIS, PHOTOS, flyTo, select, D2R, R2D, bandToTrue, trueToBand, tanHalf, size: () => [W, H], canvas, poiLayer };
 
 /* ---------------- Boot ---------------- */
 function boot() {
@@ -1027,6 +1045,7 @@ function boot() {
         lowest: PANORAMA.lowestView ?? -90 });
       upload(a, 0); upload(b, 1);
       const [ta, tb] = PANORAMA.tiles; useTiles([ta.u0, ta.u1], [tb.u0, tb.u1]);
+      gl.uniform1fv(uni.calB, new Float32Array(CAL.bearing)); gl.uniform1fv(uni.calE, new Float32Array(CAL.elev));
       if (p) { const r = PANORAMA.patch; upload(p, 2); gl.uniform4f(uni.patchR, r.b0 * D2R, r.b1 * D2R, r.e0 * D2R, r.e1 * D2R); gl.uniform1f(uni.hasPatch, 1); }
       finish();
     }).catch(() => { $("loadMsg").textContent = "Couldn't load the photos, so showing the terrain render."; usePlaceholder(); });

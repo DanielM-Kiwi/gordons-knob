@@ -22,3 +22,12 @@ Key numbers from the fit:
 - summit-crew photo: 0.035° median error, focal length 7,002 px
 
 All four photos are used. pano2 is the 360° base. pano1 and `looking at mot.jpg` add real ground below pano2's frame, and `Looking south I think with us in it.jpg` puts the summit crew on the knoll. The two extra photos also open full size from the photo markers.
+
+## Calibration (round 2)
+
+The phone sweep's bearing isn't uniform, so a single rotation can't line it up. The viewer maps band coordinates to true directions with `CAL` (Fourier series in band bearing), solved from:
+
+1. **Landmark placements.** 12 landmarks were dragged onto the real places in the calibration build (`dist/calibrate.html`, which saves to the artifact database).
+2. **The far skyline.** `skymatch.py` matched it in 3° windows against the true skyline from the trig (`sky2.py`), searching around the landmark-based prior.
+
+`combfit3.py` fits the bearing series robustly, together with a small camera offset from the trig. The result is E +15.5 m, N −7.4 m, and peaks and spot heights land within ±0.6° (towns ±2°, since a town is a broad target). `elevfit.py` solves tilt and eye height: 1674.4 m, consistent with the 14 m model plus its ~7 m datum offset from the Topo50 heights. `seamfix.py` blends exposure and the far-ridge height across the sweep's wrap at band 348.9°. The route (`route.py`) is georeferenced from the Topo50 map on its spot heights, snapped to the crest, and its visibility is checked from the calibrated eye.

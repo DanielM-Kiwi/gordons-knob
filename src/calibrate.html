@@ -106,7 +106,7 @@ function render() {
     const row = document.createElement("div"); row.className = "row";
     row.innerHTML = `<b>${p.name}</b><div class="acts"><button data-a="show">Show</button><button data-a="skip">${st.status === "cant_see" ? "Undo" : "Can't see"}</button>${st.status === "placed" ? '<button data-a="reset">Reset</button>' : ""}</div>
       <small>${p.kind} · ${(p.dist / 1000).toFixed(1)} km · <span class="chip ${st.status === "placed" ? "placed" : st.status === "cant_see" ? "skip" : ""}">${st.status === "placed" ? "Placed" : st.status === "cant_see" ? "Can't see" : "To do"}</span></small>`;
-    row.querySelector('[data-a="show"]').onclick = () => { const b = p.calib ? p.calib.b + P.BAND_YAW : p.bearing; const e = p.calib ? p.calib.e : p.elev * P.R2D; P.flyTo(b, e + 2, 26); };
+    row.querySelector('[data-a="show"]').onclick = () => { const [b, e] = p.calib ? P.bandToTrue(p.calib.b, p.calib.e) : [p.bearing, p.elev * P.R2D]; P.flyTo(b, e + 2, 26); };
     row.querySelector('[data-a="skip"]').onclick = () => save(p, st.status === "cant_see" ? null : { status: "cant_see" });
     const r = row.querySelector('[data-a="reset"]'); if (r) r.onclick = () => { delete p.calib; p.el.classList.remove("placed"); save(p, null); };
     list.appendChild(row);
@@ -133,7 +133,7 @@ function unproject(sx, sy) {
   const cp = Math.cos(v.pitch * P.D2R), sp = Math.sin(v.pitch * P.D2R);
   const ry = dy * cp + dz * sp, rz = -dy * sp + dz * cp;
   const az = v.yaw + Math.atan2(dx, rz) * P.R2D, el = Math.asin(Math.max(-1, Math.min(1, ry))) * P.R2D;
-  return { b: (((az - P.BAND_YAW) % 360) + 360) % 360, e: el };
+  const [b, e] = P.trueToBand(((az % 360) + 360) % 360, el); return { b, e };
 }
 // drag the dot of a landmark
 let drag = null;

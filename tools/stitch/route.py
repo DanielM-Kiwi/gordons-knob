@@ -22,18 +22,20 @@ P[-1]=[TE,TN]                                     # ends at the trig
 z=z_at(P[:,0],P[:,1])
 # heights relative to the trig: the DEM reads the summit ~14 m low; blend that correction in near the top
 zt=z_at(np.array([TE]),np.array([TN]))[0]
-dtrig=np.hypot(P[:,0]-TE,P[:,1]-TN); z=z+(1685-zt)*np.exp(-dtrig/300)
-E=P[:,0]-TE; N=P[:,1]-TN
+DATUM=7.0                                         # elevation model reads ~7 m below the Topo50 spot heights
+CE,CN=TE+15.5,TN-7.4                              # camera: calibrated offset from the trig
+E=P[:,0]-CE; N=P[:,1]-CN
 # visibility from the eye at the trig (1.6 m), terrain from the hi-res DEM
-eye=1685+1.6
+eye=z_at(np.array([TE+15.5]),np.array([TN-7.4]))[0]+1.6   # eye in the model's own datum
+print('camera ground (model) %.1f m, eye %.1f m'%(eye-1.6,eye))
 vis=np.zeros(len(P),bool)
 for i in range(len(P)):
     d=math.hypot(E[i],N[i])
     if d<20: vis[i]=True; continue
     ts=np.linspace(15/d,1-20/d,max(8,int(d/10)))
-    zz=z_at(TE+E[i]*ts,TN+N[i]*ts)+(1685-zt)*np.exp(-ts*d/300)
+    zz=z_at(CE+E[i]*ts,CN+N[i]*ts)
     a_t=np.arctan2(z[i]+1.0-eye,d); a_s=np.arctan2(zz-eye,ts*d)
     vis[i]=not (a_s>a_t+0.002).any()
-ls=np.round(np.stack([E,N,z],1),1).tolist()
+ls=np.round(np.stack([E,N,z+DATUM],1),1).tolist()
 json.dump({'pts':ls,'vis':vis.astype(int).tolist(),'length_m':float(s[-1])},open(S+'/route.json','w'))
 print('pts',len(P),'visible %.0f%%'%(100*vis.mean()),'start E%+.0f N%+.0f z%.0f'%(E[0],N[0],z[0]),'snap offsets mean %.1f m'%np.abs(best).mean())
