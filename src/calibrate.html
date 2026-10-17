@@ -46,7 +46,7 @@
   </div>
   <div id="pSeam" style="display:none">
     <h2>Line up the join</h2>
-    <p>The phone sweep overlaps itself near north-north-west, and the far mountains don't quite match. Open the aligner and drag the top picture until the <b>distant mountain ridges</b> line up with the one underneath. Ignore the near ground.</p>
+    <p>The phone sweep overlaps itself near north-north-west, and the far mountains don't quite match. Open the aligner, then drag, rotate (slider or <b>[</b> <b>]</b> keys) and if needed scale the top picture until the <b>distant mountain ridges</b> line up with the one underneath. Ignore the near ground.</p>
     <button class="btn primary" id="openSeam">Open the aligner</button>
     <div class="status" id="seamStatus"></div>
   </div>
@@ -63,9 +63,11 @@
     <b style="font-family:var(--f-display);font-size:20px;text-transform:uppercase">Line up the distant ridges</b>
     <label for="seamOp">Top picture <input type="range" id="seamOp" min="0" max="100" value="55"></label>
     <label for="seamFlick"><input type="checkbox" id="seamFlick"> Flicker</label>
+    <label for="seamRot">Rotate <input type="range" id="seamRot" min="-600" max="600" value="0"> <span id="seamRotV">0.00°</span></label>
+    <label for="seamScale">Scale <input type="range" id="seamScale" min="-300" max="300" value="0"> <span id="seamScaleV">100.0%</span></label>
     <label for="seamZoom">Zoom <select id="seamZoom"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option></select></label>
   </div>
-  <div class="vp" id="seamVp" tabindex="0" aria-label="Drag to align. Arrow keys nudge by one pixel, Shift by ten."><canvas id="seamB"></canvas><canvas id="seamA"></canvas></div>
+  <div class="vp" id="seamVp" tabindex="0" aria-label="Drag to align. Arrow keys nudge by one pixel, Shift by ten; [ and ] rotate."><canvas id="seamB"></canvas><canvas id="seamA"></canvas></div>
   <div class="sbar"><span class="status" id="seamOff"></span><span style="flex:1"></span>
     <button class="btn" id="seamCancel">Cancel</button><button class="btn primary" id="seamSave">Save alignment</button></div>
 </div>
@@ -169,8 +171,8 @@ $("routeOk").onclick = async () => {
 // seam aligner: A = start of the sweep, B = end of the sweep (pano2 pixels)
 const SEAM = { a: "__SEAM_A__", b: "__SEAM_B__", aOrigin: [40, 600], bOrigin: [17760, 820], guess: [18150, 345] };
 const imA = new Image(), imB = new Image(); imA.src = SEAM.a; imB.src = SEAM.b;
-let off = [SEAM.guess[0] - SEAM.bOrigin[0] + SEAM.aOrigin[0], SEAM.guess[1] - SEAM.bOrigin[1] + SEAM.aOrigin[1]];
-if (db) try { const d = await db.doc("seam/far").get(); if (d.exists) off = [d.data().ox, d.data().oy]; $("seamStatus").textContent = d.exists ? "Saved alignment loaded." : ""; } catch (_) {}
+let off = [SEAM.guess[0] - SEAM.bOrigin[0] + SEAM.aOrigin[0], SEAM.guess[1] - SEAM.bOrigin[1] + SEAM.aOrigin[1]], rot = 0, scl = 1;
+if (db) try { const d = await db.doc("seam/far").get(); if (d.exists) { off = [d.data().ox, d.data().oy]; rot = d.data().rotDeg || 0; scl = d.data().scale || 1; } $("seamStatus").textContent = d.exists ? "Saved alignment loaded." : ""; } catch (_) {}
 const vp = $("seamVp"), cA = $("seamA"), cB = $("seamB");
 let zoom = 2, pan = [0, 0], flick = null;
 function drawSeam() {
@@ -180,13 +182,20 @@ function drawSeam() {
   const cx = r.width / 2 - (off[0] + imA.width / 2) * zoom + pan[0], cy = r.height / 2 - (off[1] + imA.height / 2) * zoom + pan[1];
   const b = cB.getContext("2d"); b.setTransform(dpr * zoom, 0, 0, dpr * zoom, cx * dpr, cy * dpr); b.imageSmoothingEnabled = zoom < 2; b.drawImage(imB, 0, 0);
   const a = cA.getContext("2d"); a.setTransform(dpr * zoom, 0, 0, dpr * zoom, cx * dpr, cy * dpr); a.imageSmoothingEnabled = zoom < 2;
-  a.globalAlpha = $("seamOp").value / 100; a.drawImage(imA, off[0], off[1]);
+  a.globalAlpha = $("seamOp").value / 100;
+  // the top picture turns and scales about its own centre
+  a.translate(off[0] + imA.width / 2, off[1] + imA.height / 2); a.rotate(rot * Math.PI / 180); a.scale(scl, scl);
+  a.drawImage(imA, -imA.width / 2, -imA.height / 2);
+  $("seamRot").value = Math.round(rot * 100); $("seamRotV").textContent = rot.toFixed(2) + "°";
+  $("seamScale").value = Math.round((scl - 1) * 10000); $("seamScaleV").textContent = (scl * 100).toFixed(1) + "%";
   const dx = off[0] + SEAM.bOrigin[0] - SEAM.aOrigin[0], dy = off[1] + SEAM.bOrigin[1] - SEAM.aOrigin[1];
   $("seamOff").textContent = `Offset ${off[0]}, ${off[1]} px (loop ${dx} px across, ${dy} px down)`;
 }
 $("openSeam").onclick = () => { $("seam").hidden = false; requestAnimationFrame(drawSeam); vp.focus(); };
 $("seamCancel").onclick = () => { $("seam").hidden = true; };
 $("seamOp").oninput = drawSeam;
+$("seamRot").oninput = (e) => { rot = e.target.value / 100; drawSeam(); };
+$("seamScale").oninput = (e) => { scl = 1 + e.target.value / 10000; drawSeam(); };
 $("seamZoom").onchange = (e) => { zoom = +e.target.value; drawSeam(); };
 $("seamFlick").onchange = (e) => { clearInterval(flick); if (e.target.checked) flick = setInterval(() => { cA.style.visibility = cA.style.visibility === "hidden" ? "visible" : "hidden"; }, 450); else cA.style.visibility = "visible"; };
 let sd = null;
@@ -194,6 +203,7 @@ vp.addEventListener("pointerdown", (e) => { vp.setPointerCapture(e.pointerId); s
 vp.addEventListener("pointermove", (e) => { if (!sd) return; off = [Math.round(sd[2] + (e.clientX - sd[0]) / zoom), Math.round(sd[3] + (e.clientY - sd[1]) / zoom)]; drawSeam(); });
 vp.addEventListener("pointerup", () => { sd = null; });
 vp.addEventListener("keydown", (e) => {
+  if (e.key === "[" || e.key === "]") { e.preventDefault(); rot += (e.key === "]" ? 1 : -1) * (e.shiftKey ? 0.5 : 0.05); drawSeam(); return; }
   const k = e.shiftKey ? 10 : 1, m = { ArrowLeft: [-k, 0], ArrowRight: [k, 0], ArrowUp: [0, -k], ArrowDown: [0, k] }[e.key];
   if (m) { e.preventDefault(); e.stopPropagation(); off = [off[0] + m[0], off[1] + m[1]]; drawSeam(); }
 });
@@ -201,7 +211,7 @@ window.addEventListener("resize", () => { if (!$("seam").hidden) drawSeam(); });
 $("seamSave").onclick = async () => {
   const dx = off[0] + SEAM.bOrigin[0] - SEAM.aOrigin[0], dy = off[1] + SEAM.bOrigin[1] - SEAM.aOrigin[1];
   $("seam").hidden = true; $("seamStatus").textContent = "Alignment saved.";
-  if (db) try { await db.doc("seam/far").set({ ox: off[0], oy: off[1], loopDx: dx, loopDy: dy, at: new Date().toISOString() }); } catch (e) { $("seamStatus").textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
+  if (db) try { await db.doc("seam/far").set({ ox: off[0], oy: off[1], rotDeg: rot, scale: scl, loopDx: dx, loopDy: dy, aSize: [imA.width, imA.height], at: new Date().toISOString() }); } catch (e) { $("seamStatus").textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
 };
 })();
 </script>
