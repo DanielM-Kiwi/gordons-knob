@@ -16,6 +16,11 @@ warp=cv2.remap(ph,mx,my,cv2.INTER_AREA if False else cv2.INTER_LINEAR,borderMode
 # feather: distance from photo border in photo pixels, normalised
 dx=np.minimum(mx,w-1-mx)/w; dy=np.minimum(my,h-1-my)/h
 fe=np.clip(np.minimum(dx/0.14,dy/0.14),0,1); fe=fe*fe*(3-2*fe); fe*=inside
+# keep the insert to the knoll top and the people: soft ellipse, the pano already has everything else
+db=(np.degrees(Bg)-184.57); de=(np.degrees(Eg)+2.0)
+rr=np.sqrt((db/4.5)**2+(de/3.0)**2)
+ell=np.clip((1-rr)/0.5,0,1); ell=ell*ell*(3-2*ell)
+fe*=ell
 base=img[r0:r1,c0:c1]
 # low-frequency colour match (ratio of blurred images inside overlap)
 sig=ppd*1.2
