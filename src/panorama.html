@@ -22,6 +22,7 @@
   --r: 10px;
 }
 html,body{height:100%;}
+[hidden]{display:none!important;}
 body{margin:0;background:var(--ink);color:var(--text);font-family:var(--f-body);overflow:hidden;
   -webkit-font-smoothing:antialiased;touch-action:none;}
 button{font:inherit;color:inherit}
@@ -61,12 +62,12 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
 .poi .dot::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--marker);opacity:0;}
 .poi.in .dot::after{animation:ping 2.6s ease-out infinite;animation-delay:inherit;}
 .poi .stem{position:absolute;left:-1px;bottom:0;width:2px;height:var(--h,60px);transform-origin:bottom;transform:scaleY(0);
-  background:linear-gradient(to top,rgba(255,255,255,.95),rgba(255,255,255,.5));transition:transform .55s cubic-bezier(.2,.8,.2,1);}
+  background:linear-gradient(to top,rgba(255,255,255,.95),rgba(255,255,255,.5));transition:transform .55s cubic-bezier(.2,.8,.2,1),height .35s ease;}
 .poi button{position:absolute;left:0;bottom:var(--h,60px);transform:translate(-50%,-6px) scale(.85);opacity:0;pointer-events:auto;
   display:flex;align-items:center;gap:8px;white-space:nowrap;cursor:pointer;
   padding:6px 10px 6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--glass);
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);text-align:left;
-  transition:opacity .4s ease,transform .5s cubic-bezier(.2,.9,.25,1.2),background .2s,border-color .2s;}
+  transition:opacity .4s ease,transform .5s cubic-bezier(.2,.9,.25,1.2),bottom .35s ease,background .2s,border-color .2s;}
 .poi button:hover,.poi.sel button{background:var(--glass-hi);border-color:rgba(255,122,26,.7);}
 .poi .tri{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid var(--marker);flex:none;
   filter:drop-shadow(0 1px 0 var(--marker-deep));}
@@ -83,6 +84,19 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
 .poi.hid .nm{color:#d9e3df;}
 .poi.off{visibility:hidden;}
 #pois.labels-off .poi{display:none;}
+.poi.photo .dot{background:#fff;box-shadow:0 0 0 2px var(--marker);}
+.poi.photo .dot::after{border-color:#fff;}
+.poi.photo .cam{width:18px;height:18px;flex:none;stroke:var(--marker);fill:none;stroke-width:1.8;stroke-linejoin:round;}
+.lb{position:absolute;inset:0;z-index:30;display:grid;grid-template-rows:1fr auto;gap:12px;
+  padding:calc(56px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  background:rgba(8,14,14,.86);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;transition:opacity .35s ease;}
+.lb.open{opacity:1;}
+.lb img{width:100%;height:100%;min-height:0;object-fit:contain;border-radius:6px;transform:scale(.97);transition:transform .45s cubic-bezier(.2,.8,.2,1);}
+.lb.open img{transform:scale(1);}
+.lb figcaption{max-width:70ch;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:4px;}
+.lb figcaption b{font-family:var(--f-display);font-stretch:70%;font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:.02em;}
+.lb figcaption span{font-size:13.5px;line-height:1.5;color:#d6e0dc;}
+.lb .x{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:calc(16px + env(safe-area-inset-right,0px));}
 @keyframes ping{0%{transform:scale(.6);opacity:.9}70%{transform:scale(2.2);opacity:0}100%{opacity:0}}
 
 /* --- Info card --- */
@@ -162,8 +176,8 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
   <header class="head">
     <div class="eyebrow">Gordon Range · Mt Richmond Forest Park</div>
     <h1>Gordons Knob</h1>
-    <div class="meta">1,592 m <span class="ll">· 41°36′14″S 172°56′13″E</span></div>
-    <div class="chip" id="chip" title="Swap in your own photo by setting PANORAMA.image in the page config"><i></i><span>Placeholder view · rendered from elevation data</span></div>
+    <div class="meta">1,592 m <span class="ll">· 41°36′27″S 172°56′34″E</span></div>
+    <div class="chip" id="chip" hidden title="Swap in your own photo by setting PANORAMA.image in the page config"><i></i><span>Placeholder view · rendered from elevation data</span></div>
   </header>
 
   <nav class="tools" aria-label="View controls">
@@ -187,20 +201,42 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
     <div class="zoom"><button id="zIn" aria-label="Zoom map in">+</button><button id="zOut" aria-label="Zoom map out">−</button></div>
   </div>
 
+  <figure class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo">
+    <img id="lbImg" alt="">
+    <figcaption><b id="lbName"></b><span id="lbCap"></span></figcaption>
+    <button class="tool x" id="lbClose" aria-label="Close photo"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </figure>
+
   <div class="loader" id="loader"><div><b>Gordons Knob</b><div class="bar"></div><span id="loadMsg">Rendering the view from 1,592 m…</span></div></div>
 </div>
 
 <script>
 /* =========================================================================
    CONFIG — edit here.
-   PANORAMA.image: URL or data: URI of an equirectangular (2:1) 360° photo.
-                   Leave null to use the terrain placeholder.
-   PANORAMA.centreBearing: true bearing (degrees) at the horizontal centre of the photo.
-   PANORAMA.horizonOffset: degrees to raise (+) or lower (−) the photo's horizon if it isn't level.
+   PANORAMA.image: URL or data: URI of an equirectangular 360° image. It can be a horizontal
+                   band: top/bottom give the elevations (degrees) of its first and last rows,
+                   and the viewer continues the sky to the zenith and the ground to the nadir.
+                   Leave image null to use the terrain placeholder.
+   PANORAMA.centreBearing: true bearing (degrees) at the horizontal centre of the image.
+   PANORAMA.horizonOffset: degrees to raise (+) or lower (−) the horizon if it isn't level.
+   PANORAMA.lowestView: how far down (degrees) the bottom of the screen may look.
    ========================================================================= */
-const PANORAMA = { image: null, centreBearing: 180, horizonOffset: 0 };
+const PANORAMA = {
+  image: "__PANO_IMAGE__", centreBearing: 180, horizonOffset: 0,
+  top: 36, bottom: -54, zenith: [38, 92, 179], nadir: [104, 95, 75], lowestView: -50,
+};
 
-const VIEWPOINT = { name: "Gordons Knob", lat: -41.6039, lon: 172.9369, height: 1592, eye: 6 };
+/* Camera position: solved by fitting the photo's skyline to the elevation model,
+   about 640 m ESE of the gazetteer point, on the highest ground of the knob. */
+const VIEWPOINT = { name: "Gordons Knob", lat: -41.60749, lon: 172.94291, height: 1592, eye: 2 };
+
+/* Photos taken on the day, pinned where they were taken looking. */
+const PHOTOS = [
+  { name: "The summit crew", bearing: 184.6, elev: -0.2, src: "__PHOTO_CREW__",
+    caption: "On the knoll south of the summit, with the snow-capped St Arnaud and Travers ranges behind. This photo is blended into the panorama." },
+  { name: "Toward Motueka", bearing: 28.6, elev: -5, src: "__PHOTO_MOT__",
+    caption: "Down the Wairoa side toward the Motueka valley, Tasman Bay and the coast." },
+];
 
 /* Positions are approximate (snapped to the highest nearby cell of a 200 m elevation grid). */
 const POIS = [
@@ -222,6 +258,8 @@ const POIS = [
     note: "Marble peak in Kahurangi National Park, standing above the Graham and Pearse valleys." },
   { name: "Mt Owen",      lat: -41.5509, lon: 172.5393, height: 1875, kind: "Peak",
     note: "Highest point in Kahurangi. Its glaciated marble plateau sits over one of the country's deepest cave systems." },
+  { name: "Motueka",      lat: -41.1236, lon: 173.0122, height: null, kind: "Town",
+    note: "Market town at the mouth of the Motueka River, on the western shore of Tasman Bay." },
   { name: "Lake Rotoiti", lat: -41.8300, lon: 172.8500, height: 610, kind: "Lake",
     note: "Glacial lake at St Arnaud in Nelson Lakes National Park, below the St Arnaud Range." },
 ];
@@ -247,17 +285,20 @@ const Z = (() => {
   for (let i = 0; i < n; i++) a[i] = (bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8)) - 100;
   return a;
 })();
+const GRID_ORIGIN = { lat: -41.6039, lon: 172.9369 };   // centre of the embedded elevation grid
 const mLat = 111320, mLon = 111320 * Math.cos(VIEWPOINT.lat * D2R);
 const toEN = (lat, lon) => [(lon - VIEWPOINT.lon) * mLon, (lat - VIEWPOINT.lat) * mLat];
+const [VP_E, VP_N] = [(VIEWPOINT.lon - GRID_ORIGIN.lon) * mLon, (VIEWPOINT.lat - GRID_ORIGIN.lat) * mLat];
+// e, n: metres east/north of the viewpoint
 function elevAt(e, n) {
-  const fx = (e + G.half) / G.cs - 0.5, fy = (G.half - n) / G.cs - 0.5;
+  const fx = (e + VP_E + G.half) / G.cs - 0.5, fy = (G.half - n - VP_N) / G.cs - 0.5;
   if (fx < 0 || fy < 0 || fx >= G.n - 1 || fy >= G.n - 1) return NaN;
   const ix = fx | 0, iy = fy | 0, tx = fx - ix, ty = fy - iy, k = iy * G.n + ix;
   const a = Z[k], b = Z[k + 1], c = Z[k + G.n], d = Z[k + G.n + 1];
   return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
 }
 const EARTH_R = 6371000, REFRACT = 0.87;
-const z0 = Math.max(elevAt(0, 0), VIEWPOINT.height) + VIEWPOINT.eye;
+const z0 = elevAt(0, 0) + VIEWPOINT.eye;
 const angleTo = (z, d) => Math.atan2(z - z0 - (d * d) / (2 * EARTH_R) * REFRACT, d);
 
 /* ---------------- POI geometry ---------------- */
@@ -334,7 +375,7 @@ const hill = new Float32Array(G.n * G.n);
   }
 })();
 function groundAt(e, n, out) {
-  const fx = (e + G.half) / G.cs - 0.5, fy = (G.half - n) / G.cs - 0.5;
+  const fx = (e + VP_E + G.half) / G.cs - 0.5, fy = (G.half - n - VP_N) / G.cs - 0.5;
   const ix = Math.min(G.n - 2, Math.max(0, fx | 0)), iy = Math.min(G.n - 2, Math.max(0, fy | 0));
   const tx = fx - ix, ty = fy - iy, k = (iy * G.n + ix) * 3, k2 = k + G.n * 3;
   for (let q = 0; q < 3; q++) {
@@ -409,13 +450,15 @@ function renderPlaceholder(W, H) {
 const canvas = $("gl");
 const gl = canvas.getContext("webgl2", { antialias: false, preserveDrawingBuffer: false });
 let PANORAMA_CENTRE = PANORAMA.centreBearing;
-const view = { yaw: 40, pitch: -2, fov: 62, vy: 0, vp: 0, target: null };
+const band = { top: 90, bottom: -90, zenith: [0, 0, 0], nadir: [0, 0, 0], lowest: -90 };
+const view = { yaw: 40, pitch: -2, fov: 56, vy: 0, vp: 0, target: null };
 
 const VS = `#version 300 es
 in vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`;
 const FS = `#version 300 es
 precision highp float;
-uniform sampler2D tex; uniform vec2 res; uniform float yaw, pitch, tanHalf, centre, hOff;
+uniform sampler2D tex; uniform vec2 res; uniform float yaw, pitch, tanHalf, centre, hOff, vTop, vBot;
+uniform vec3 zen, nad;
 out vec4 o;
 const float PI = 3.141592653589793;
 void main(){
@@ -425,10 +468,12 @@ void main(){
   d = vec3(d.x, d.y * cp + d.z * sp, -d.y * sp + d.z * cp);
   float az = yaw + atan(d.x, d.z);
   float el = asin(clamp(d.y, -1., 1.)) - hOff;
-  vec2 uv = vec2(fract((az - centre) / (2. * PI) + .5), clamp(.5 - el / PI, 0., 1.));
+  vec2 uv = vec2(fract((az - centre) / (2. * PI) + .5), clamp((vTop - el) / (vTop - vBot), .0004, .9996));
   vec2 dx = dFdx(uv), dy = dFdy(uv);
   dx.x -= floor(dx.x + .5); dy.x -= floor(dy.x + .5);
   vec3 c = textureGrad(tex, uv, dx, dy).rgb;
+  if (el > vTop) c = mix(c, zen, smoothstep(vTop, PI / 2., el));
+  if (el < vBot) c = mix(c, nad, smoothstep(vBot, vBot - .45, el));
   float v = length(q / vec2(res.x / res.y, 1.));
   c *= 1. - .22 * smoothstep(.55, 1.45, v);
   o = vec4(c, 1.);
@@ -443,7 +488,7 @@ function initGL() {
   const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  for (const n of ["tex", "res", "yaw", "pitch", "tanHalf", "centre", "hOff"]) uni[n] = gl.getUniformLocation(prog, n);
+  for (const n of ["tex", "res", "yaw", "pitch", "tanHalf", "centre", "hOff", "vTop", "vBot", "zen", "nad"]) uni[n] = gl.getUniformLocation(prog, n);
   gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -509,6 +554,28 @@ let selected = null;
   p.el = el; p.onScreen = false; p.lastSeen = -1e9;
 });
 
+PHOTOS.forEach((ph) => {
+  const el = document.createElement("div");
+  el.className = "poi photo"; el.style.setProperty("--h", "38px");
+  el.innerHTML = `<span class="stem"></span><span class="dot"></span>
+    <button type="button" aria-label="Open photo: ${ph.name}"><svg class="cam" viewBox="0 0 24 24"><path d="M3.5 8h3.5l2-3h6l2 3h3.5v11h-17z"/><circle cx="12" cy="13" r="3.6"/></svg>
+    <span><span class="nm">${ph.name}</span><span class="sub">Photo · open</span></span></button>`;
+  el.querySelector("button").addEventListener("click", (ev) => { ev.stopPropagation(); openPhoto(ph); });
+  poiLayer.appendChild(el);
+  Object.assign(ph, { el, elev: ph.elev * D2R, onScreen: false, lastSeen: -1e9 });
+});
+const MARKERS = [...POIS, ...PHOTOS];
+const lb = $("lb");
+let lbTimer = 0;
+function openPhoto(ph) {
+  clearTimeout(lbTimer);
+  $("lbImg").src = ph.src; $("lbImg").alt = ph.name; $("lbName").textContent = ph.name; $("lbCap").textContent = ph.caption;
+  lb.hidden = false; requestAnimationFrame(() => lb.classList.add("open")); $("lbClose").focus();
+}
+function closePhoto() { lb.classList.remove("open"); lbTimer = setTimeout(() => { lb.hidden = true; }, 350); }
+$("lbClose").onclick = closePhoto;
+lb.addEventListener("click", (e) => { if (e.target === lb) closePhoto(); });
+
 const card = $("card");
 function idleCard() {
   card.classList.add("idle");
@@ -535,8 +602,8 @@ function select(p, fly) {
 /* ---------------- Interaction ---------------- */
 let downX = 0, downY = 0, dragging = false, lastX = 0, lastY = 0, lastT = 0, idleAt = performance.now(), spin = false;
 const pointers = new Map(); let pinch0 = 0, fov0 = 0;
-const clampPitch = (p) => Math.max(-70, Math.min(70, p));
-const clampFov = (f) => Math.max(22, Math.min(100, f));
+const clampPitch = (p) => Math.max(Math.max(-70, band.lowest + view.fov / 2), Math.min(70, p));
+const clampFov = (f) => Math.max(12, Math.min(band.lowest > -90 ? 72 : 100, f));
 function wake() { idleAt = performance.now(); view.target = null; }
 canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]);
@@ -571,17 +638,19 @@ canvas.addEventListener("wheel", (e) => {
 }, { passive: false });
 canvas.addEventListener("click", (e) => { if (Math.hypot(e.clientX - downX, e.clientY - downY) < 5 && selected) select(null); });
 window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !lb.hidden) { closePhoto(); return; }
   if (e.target.closest && e.target.closest("button")) { if (!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) return; }
   const step = e.shiftKey ? 15 : 5; let used = true;
   if (e.key === "ArrowLeft") view.yaw -= step; else if (e.key === "ArrowRight") view.yaw += step;
   else if (e.key === "ArrowUp") view.pitch = clampPitch(view.pitch + step); else if (e.key === "ArrowDown") view.pitch = clampPitch(view.pitch - step);
   else if (e.key === "+" || e.key === "=") view.fov = clampFov(view.fov * 0.85); else if (e.key === "-") view.fov = clampFov(view.fov / 0.85);
-  else if (e.key === "Escape") select(null); else used = false;
+  else if (e.key === "Escape") { if (!lb.hidden) closePhoto(); else select(null); } else used = false;
   if (used) { e.preventDefault(); wake(); }
 });
-function flyTo(bearing, pitch) {
+function flyTo(bearing, pitch, fov) {
   let d = ((bearing - view.yaw) % 360 + 540) % 360 - 180;
-  view.target = { yaw: view.yaw + d, pitch: pitch ?? view.pitch, t0: performance.now(), y0: view.yaw, p0: view.pitch, dur: reduceMotion ? 1 : 1100 + Math.abs(d) * 4 };
+  view.target = { yaw: view.yaw + d, pitch: pitch ?? view.pitch, fov: fov ?? view.fov, f0: view.fov,
+    t0: performance.now(), y0: view.yaw, p0: view.pitch, dur: reduceMotion ? 1 : 1100 + Math.abs(d) * 4 };
   view.vy = view.vp = 0; idleAt = performance.now();
 }
 
@@ -589,7 +658,7 @@ const bLabels = $("bLabels"), bSpin = $("bSpin");
 bLabels.onclick = () => {
   const on = bLabels.getAttribute("aria-pressed") !== "true";
   bLabels.setAttribute("aria-pressed", on); poiLayer.classList.toggle("labels-off", !on);
-  if (on) POIS.forEach((p) => { p.el.classList.remove("in"); p.onScreen = false; });
+  if (on) MARKERS.forEach((p) => { p.el.classList.remove("in"); p.onScreen = false; });
 };
 bSpin.onclick = () => { spin = !spin; bSpin.setAttribute("aria-pressed", spin); idleAt = 0; };
 $("bNorth").onclick = () => flyTo(0, 0);
@@ -701,9 +770,10 @@ function drawMap() {
   const toPx = (e, n) => [r + e / mpp, r - n / mpp];
   c.save(); c.beginPath(); c.arc(r, r, r, 0, TAU); c.clip();
   // source window in topo pixels
-  const pxPerM = TS / G.cs, sx = (G.half - mapR) * pxPerM, sw = 2 * mapR * pxPerM;
+  const pxPerM = TS / G.cs, sw = 2 * mapR * pxPerM;
+  const sx = (G.half + VP_E - mapR) * pxPerM, sy = (G.half - VP_N - mapR) * pxPerM;
   c.fillStyle = "#dfe6dc"; c.fillRect(0, 0, S, S);
-  c.imageSmoothingEnabled = true; c.drawImage(topo, sx, sx, sw, sw, 0, 0, S, S);
+  c.imageSmoothingEnabled = true; c.drawImage(topo, sx, sy, sw, sw, 0, 0, S, S);
   // grid every 5 km (km grid feel of Topo50)
   const gstep = mapR > 30000 ? 10000 : mapR > 10000 ? 5000 : 2000;
   c.strokeStyle = "rgba(40,70,90,.13)"; c.lineWidth = 1; c.beginPath();
@@ -782,6 +852,7 @@ function frame(now) {
   if (view.target) {
     const t = Math.min(1, (now - view.target.t0) / view.target.dur), k = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     view.yaw = mix(view.target.y0, view.target.yaw, k); view.pitch = mix(view.target.p0, view.target.pitch, k);
+    view.fov = mix(view.target.f0, view.target.fov, k);
     if (t >= 1) view.target = null;
   } else if (!dragging) {
     view.yaw += view.vy; view.pitch = clampPitch(view.pitch + view.vp);
@@ -795,12 +866,16 @@ function frame(now) {
     gl.uniform1f(uni.yaw, view.yaw * D2R); gl.uniform1f(uni.pitch, view.pitch * D2R);
     gl.uniform1f(uni.tanHalf, tanHalf()); gl.uniform1f(uni.centre, PANORAMA_CENTRE * D2R);
     gl.uniform1f(uni.hOff, PANORAMA.horizonOffset * D2R);
+    gl.uniform1f(uni.vTop, band.top * D2R); gl.uniform1f(uni.vBot, band.bottom * D2R);
+    gl.uniform3fv(uni.zen, band.zenith); gl.uniform3fv(uni.nad, band.nadir);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
   // POIs
   const hOff = PANORAMA.horizonOffset * D2R;
   let stagger = 0;
-  for (const p of POIS) {
+  view.pitch = clampPitch(view.pitch);
+  const shown = [];
+  for (const p of MARKERS) {
     const s = texReady ? project(p.bearing, p.elev + hOff) : null;
     const vis = s && s[0] > -60 && s[0] < W + 60 && s[1] > -40 && s[1] < H + 220;
     if (vis) {
@@ -810,10 +885,20 @@ function frame(now) {
         p.el.style.setProperty("--d", (now - p.lastSeen > 1500 ? stagger++ * 110 : 0) + "ms");
         p.el.classList.add("in");
       }
-      p.onScreen = true; p.lastSeen = now;
+      p.onScreen = true; p.lastSeen = now; p.sx = s[0]; shown.push(p);
     } else if (p.onScreen) {
       p.onScreen = false; p.el.classList.remove("in"); p.el.classList.add("off");
     } else p.el.classList.add("off");
+  }
+  // stack labels so neighbours never overlap: lowest free tier, left to right
+  shown.sort((a, b) => a.sx - b.sx);
+  const tierRight = [];
+  for (const p of shown) {
+    if (!p.w) p.w = p.el.querySelector("button").offsetWidth || 150;
+    let L = 0;
+    while (L < 5 && tierRight[L] !== undefined && p.sx - p.w / 2 < tierRight[L] + 8) L++;
+    L = Math.min(L, 4); tierRight[L] = p.sx + p.w / 2;
+    if (p.tier !== L) { p.tier = L; p.el.style.setProperty("--h", (40 + L * 44) + "px"); }
   }
   drawTape(); drawMap();
   requestAnimationFrame(frame);
@@ -828,18 +913,25 @@ function boot() {
   const finish = () => {
     $("loader").classList.add("done");
     intro.t0 = performance.now() + (reduceMotion ? 0 : 500);
-    if (intro.on) { view.yaw = 10; view.pitch = -1; view.fov = 70; flyTo(62, -1); view.target.dur = 3800; }
-    else view.yaw = 62;
+    view.fov = clampFov(view.fov);
+    if (intro.on) { view.yaw = 120; view.pitch = clampPitch(4); view.fov = clampFov(62); flyTo(184.6, 0.5, 34); view.target.dur = 4600; }
+    else { view.yaw = 184.6; view.fov = 34; view.pitch = 0.5; }
     idleAt = performance.now();
   };
   const usePlaceholder = () => {
-    PANORAMA_CENTRE = 180;
+    PANORAMA_CENTRE = 180; $("chip").hidden = false;
     setTimeout(() => { upload(renderPlaceholder(4096, 2048)); finish(); }, 30);
   };
   if (PANORAMA.image) {
     $("loadMsg").textContent = "Loading panorama…";
     const im = new Image(); im.crossOrigin = "anonymous";
-    im.onload = () => { PANORAMA_CENTRE = PANORAMA.centreBearing; $("chip").hidden = true; upload(im); finish(); };
+    im.onload = () => {
+      PANORAMA_CENTRE = PANORAMA.centreBearing; $("chip").hidden = true;
+      Object.assign(band, { top: PANORAMA.top ?? 90, bottom: PANORAMA.bottom ?? -90,
+        zenith: (PANORAMA.zenith || [0, 0, 0]).map((v) => v / 255), nadir: (PANORAMA.nadir || [0, 0, 0]).map((v) => v / 255),
+        lowest: PANORAMA.lowestView ?? -90 });
+      upload(im); finish();
+    };
     im.onerror = () => { $("loadMsg").textContent = "Couldn't load the photo, so showing the terrain render."; usePlaceholder(); };
     im.src = PANORAMA.image;
   } else usePlaceholder();
