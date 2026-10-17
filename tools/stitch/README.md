@@ -8,8 +8,11 @@ These scripts turn the phone photos into `assets/gordons-knob-360.jpg`. Run them
 | 2 | `demsky.py` | Builds a ±160 km elevation mosaic (AWS Terrain Tiles z10) and computes the true skyline from the summit. |
 | 3 | `fit3.py` | Solves bearing, horizon, tilt, sweep warp and camera position by fitting the photo skyline to the DEM skyline. The loop drift of 368 px is fixed from the self-overlap. |
 | 4 | `sim.py`, `sim2.py` + `rotfit.py` | SIFT-match the extra photos against the pano, then solve each camera's 3D rotation and focal length (Kabsch). |
-| 5 | `stitch.py` | Resamples pano2 into an equirectangular band (+36° to −54°), feathers the 360° loop seam, extends the sky to the zenith and quilts tussock ground below the photo edge. |
-| 6 | `insert.py` | Projects the summit-crew photo into the band with low-frequency colour matching and feathered edges. |
+| 5 | `p1map.py` + `p1geo.py` | Matches pano1 to pano2 (5,900 points), then solves pano1's own geometry: per-column bearing with a roll/shear term, plus its horizon and focal length. The bearing error is 0.025°. |
+| 6 | `compose.py` | Composites the real photos into an equirectangular band (+36° to −54°) with soft alpha edges, in priority order: pano2 (loop seam feathered), then pano1, then the Motueka photo. Each lower layer is colour-gain matched to pano2 in their overlap. pano1 and the Motueka photo extend real ground from −25° down to −27…−34°. |
+| 7 | `final.py` | Fills sky to the zenith (fitted to the photo's own gradient) and quilts tussock texture only where no photo reaches. |
+| 8 | `insert.py` | Projects the summit-crew photo in by its solved camera rotation, with low-frequency colour matching and feathered edges. |
+| 9 | `seamcheck.py` | Scores every column and row for discontinuities against its neighbours. In the final image the worst is 1.24×, and the pano2 loop seam is 1.09×. |
 
 Key numbers from the fit:
 - pano2 circumference: 18,032 px
@@ -18,4 +21,4 @@ Key numbers from the fit:
 - skyline match: median 0.2°
 - summit-crew photo: 0.035° median error, focal length 7,002 px
 
-`pano1.jpg` is a second partial sweep of the same view, so it isn't needed. `looking at mot.jpg` is pinned as a photo marker instead of being blended. Its near ground doesn't match the pano, which means it was shot a few metres away, and blending it would ghost the foreground.
+All four photos are used. pano2 is the 360° base. pano1 and `looking at mot.jpg` add real ground below pano2's frame, and `Looking south I think with us in it.jpg` puts the summit crew on the knoll. The two extra photos also open full size from the photo markers.

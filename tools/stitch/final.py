@@ -1,7 +1,6 @@
-R=''  # run from the repo root
 import cv2, numpy as np, math, gc
 exec(open('tools/stitch/geo.py').read())
-
+R=''  # run from the repo root
 W=12288; TOP=36.0; BOT=-54.0
 ppd=W/360.0; Hh=int(round((TOP-BOT)*ppd))
 OV=18704-C
@@ -13,25 +12,8 @@ xs=x_of_brg(beta); hor=hor_of_x(xs)
 el_top=np.degrees(np.arctan((hor-2)/f)); el_bot=np.degrees(np.arctan((hor-(PH-3))/f))
 el_top=np.full_like(el_top,el_top.min()); el_bot=np.full_like(el_bot,el_bot.max())
 print('photo covers el top %.1f..%.1f  bottom %.1f..%.1f'%(el_top.min(),el_top.max(),el_bot.min(),el_bot.max()),flush=True)
-img=np.zeros((Hh,W,3),np.uint8)
+img=cv2.imread('work/real.png'); ALPHA=np.load('work/alpha.npy').astype(np.float32)
 CH=1024
-def sample(xc,hc):
-    mx=np.broadcast_to(xc[None,:].astype(np.float32),(Hh,len(xc))).copy()
-    my=(hc[None,:].astype(np.float32)-f*T[:,None])
-    o=cv2.remap(p2,mx,my,cv2.INTER_CUBIC,borderMode=cv2.BORDER_CONSTANT).astype(np.float32)
-    v=((my>=0)&(my<=PH-1)&(mx>=0)&(mx<=PW-1)).astype(np.float32)
-    return o,v
-for c0 in range(0,W,CH):
-    sl=slice(c0,min(W,c0+CH)); x=xs[sl]
-    A,va=sample(x,hor[sl])
-    if (x<OV).any():
-        B,vb=sample(x+C,hor_of_x(x+C))
-        w=np.clip(x/OV,0,1); w=w*w*(3-2*w)
-        wa=np.where(x<OV,w,1)[None]*va; wb=np.where(x<OV,1-w,0)[None]*vb
-        A=(A*wa[...,None]+B*wb[...,None])/np.maximum(wa+wb,1e-6)[...,None]; del B
-    img[:,sl]=np.clip(A,0,255).astype(np.uint8); del A
-gc.collect()
-print('sampled',flush=True)
 def wrapblur(a,sig):
     pad=int(sig*4); ap=np.concatenate([a[-pad:],a,a[:pad]]); return cv2.GaussianBlur(ap[None].astype(np.float32),(0,0),sig)[0][pad:-pad]
 # ---- sky ----
@@ -104,7 +86,7 @@ gmean=img[sel].astype(np.float32).mean(0)
 bl=cv2.GaussianBlur(ground,(0,0),ppd*0.8)
 ground=ground*(1-deep[...,None])+(bl*0.6+gmean*0.4)*deep[...,None]; del bl
 ground*=(1-0.25*deep)[...,None]
-wg=np.clip((el_bot[None,:]+gb-re)/gb,0,1); wg=wg*wg*(3-2*wg)
+wg=(1-ALPHA[G0:])*(re<0)
 reg=img[G0:].astype(np.float32)
 img[G0:]=np.clip(reg*(1-wg[...,None])+ground*wg[...,None],0,255).astype(np.uint8)
 cv2.imwrite('work/band_base.png',img)

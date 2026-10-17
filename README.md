@@ -4,7 +4,7 @@ Interactive 360° view from the summit of Gordons Knob (1,592 m, Gordon Range, M
 
 - `index.html` is the standalone page. Open it directly; it needs no server and has no build step.
 - `dist/artifact.html` has the same content without the document wrapper, for publishing as a Claude artifact.
-- `assets/` holds the stitched 360° band (`gordons-knob-360.jpg`, 12288 × 3072, +36° to −54°) and the two photos shown in the photo markers. The stitching pipeline is in `tools/stitch/`.
+- `assets/` holds the stitched 360° band (`gordons-knob-360.jpg`, 12288 × 3072, +36° to −54°), built from all four summit photos, and the two photos shown in the photo markers. The stitching pipeline is in `tools/stitch/`.
 
 ## Stack
 
