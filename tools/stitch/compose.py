@@ -1,8 +1,8 @@
 import cv2, numpy as np, math, gc
 S='work'
 exec(open(S+'/geo.py').read())
-R=''  # run from the repo root
-W=12288; TOP=36.0; BOT=-54.0; ppd=W/360.0; Hh=int(round((TOP-BOT)*ppd)); OV=18704-C
+R=''
+W=18032; TOP=20.0; BOT=-27.0; ppd=W/360.0; Hh=int(round((TOP-BOT)*ppd)); OV=18704-C
 p2=cv2.imread(R+'pano2.jpg'); p1=cv2.imread(R+'pano1.jpg'); pm=cv2.imread(R+'looking at mot.jpg')
 P2H=p2.shape[0]; P1H,P1W=p1.shape[:2]; MH,MW=pm.shape[:2]
 m1=np.load(S+'/p1model.npz'); qm=np.load(S+'/rot_mot.npy'); fm,cxm,cym=qm[:3]; Rmot=qm[3:].reshape(3,3)

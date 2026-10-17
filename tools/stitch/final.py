@@ -1,7 +1,7 @@
 import cv2, numpy as np, math, gc
 exec(open('tools/stitch/geo.py').read())
-R=''  # run from the repo root
-W=12288; TOP=36.0; BOT=-54.0
+R=''
+W=18032; TOP=20.0; BOT=-27.0
 ppd=W/360.0; Hh=int(round((TOP-BOT)*ppd))
 OV=18704-C
 p2=cv2.imread(R+'pano2.jpg'); PH,PW=p2.shape[:2]

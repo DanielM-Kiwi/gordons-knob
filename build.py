@@ -12,7 +12,9 @@ def data_uri(path, mime="image/jpeg"):
 body = (root / "src/panorama.html").read_text()
 for token, value in {
     "__DEM_B64__": (root / "data/dem-600-200m.b64").read_text().strip(),
-    "__PANO_IMAGE__": data_uri("assets/gordons-knob-360.jpg"),
+    "__PANO_A__": data_uri("assets/pano-a.webp", "image/webp"),
+    "__PANO_B__": data_uri("assets/pano-b.webp", "image/webp"),
+    "__CREW_PATCH__": data_uri("assets/crew-patch.webp", "image/webp"),
     "__PHOTO_CREW__": data_uri("assets/summit-crew.jpg"),
     "__PHOTO_MOT__": data_uri("assets/toward-motueka.jpg"),
 }.items():
