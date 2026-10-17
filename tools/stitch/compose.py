@@ -26,7 +26,7 @@ def L2(sl):
     if (x<OV).any():
         B,ab=one(x+C,hor_of_x(x+C)); w=ramp(x,OV)
         wa=np.where(x<OV,w,1)[None]*aa; wb=np.where(x<OV,1-w,0)[None]*ab
-        A=(A*wa[...,None]+B*wb[...,None])/np.maximum(wa+wb,1e-6)[...,None]; aa=np.maximum(aa*np.where(x<OV,1,1)[None],ab*(x<OV)[None])
+        A=(A*wa[...,None]+B*wb[...,None])/np.maximum(wa+wb,1e-6)[...,None]; aa=wa+wb
     return A,aa
 def p1_xy(b,e):
     bx,bb,ss,xh,hh,f1=m1['bx'],m1['bb'],m1['ss'],m1['x'],m1['h'],float(m1['f1'])

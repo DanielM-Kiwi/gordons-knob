@@ -12,7 +12,7 @@ These scripts turn the phone photos into `assets/gordons-knob-360.jpg`. Run them
 | 6 | `compose.py` | Composites the real photos into an equirectangular band (+36° to −54°) with soft alpha edges, in priority order: pano2 (loop seam feathered), then pano1, then the Motueka photo. Each lower layer is colour-gain matched to pano2 in their overlap. pano1 and the Motueka photo extend real ground from −25° down to −27…−34°. |
 | 7 | `final.py` | Fills sky to the zenith (fitted to the photo's own gradient) and quilts tussock texture only where no photo reaches. |
 | 8 | `insert.py` | Projects the summit-crew photo in by its solved camera rotation, with low-frequency colour matching and feathered edges. |
-| 9 | `seamcheck.py` | Scores every column and row for discontinuities against its neighbours. In the final image the worst is 1.24×, and the pano2 loop seam is 1.09×. |
+| 9 | `seamcheck.py`, `verify.py` | Measured checks on the final image. Results:<br>• Column-step score: stitched max 1.29×, below the raw unstitched pano2's own 1.38×, so stitching adds no seam above natural texture.<br>• Narrowest blend-mask transition: 0.42°, so there are no hard edges.<br>• Summit-crew photo vs the pano underneath: 0.42 px median displacement over 454 features.<br>• Synthetic ground in what the viewer can show: 1.85%, all of it soft fade strips. The viewer's lowest view is limited to −30° for this reason. |
 
 Key numbers from the fit:
 - pano2 circumference: 18,032 px
