@@ -1,0 +1,850 @@
+<title>Gordons Knob Panorama</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed panorama; glass instruments pinned to the corners like a surveyor's overlay. */
+:root{
+  color-scheme: dark;
+  --ink: #0d1716;            /* beech-forest shadow */
+  --glass: rgba(14, 26, 27, .62);
+  --glass-hi: rgba(24, 40, 41, .78);
+  --line: rgba(214, 228, 222, .18);
+  --text: #eef3ef;
+  --muted: #a9bab4;
+  --marker: #ff7a1a;         /* DOC track-marker orange */
+  --marker-deep: #c4520a;
+  --hidden: #9fb1ab;
+  --map-ring: #f4f1e8;
+  --f-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+html,body{height:100%;}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--f-body);overflow:hidden;
+  -webkit-font-smoothing:antialiased;touch-action:none;}
+button{font:inherit;color:inherit}
+#app{position:fixed;inset:0;overflow:hidden;background:var(--ink);}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;}
+#gl.dragging{cursor:grabbing;}
+
+/* --- Head block --- */
+.head{position:absolute;z-index:5;pointer-events:none;
+  top:calc(16px + env(safe-area-inset-top,0px));left:calc(18px + env(safe-area-inset-left,0px));
+  display:flex;flex-direction:column;gap:4px;text-shadow:0 1px 18px rgba(0,0,0,.45);}
+.eyebrow{font:500 11px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-size:clamp(34px,6vw,64px);
+  line-height:.9;letter-spacing:.01em;text-transform:uppercase;text-wrap:balance;}
+.meta{font:400 12px/1.4 var(--f-mono);color:var(--text);opacity:.9;font-variant-numeric:tabular-nums;}
+.chip{margin-top:8px;pointer-events:auto;align-self:flex-start;display:inline-flex;gap:8px;align-items:center;
+  padding:6px 10px;border-radius:999px;background:var(--glass);border:1px solid var(--line);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font:500 11px/1.2 var(--f-mono);color:var(--muted);text-shadow:none;}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--marker);box-shadow:0 0 0 3px rgba(255,122,26,.25);}
+
+/* --- Toolbar --- */
+.tools{position:absolute;z-index:6;display:flex;gap:6px;
+  top:calc(16px + env(safe-area-inset-top,0px));right:calc(16px + env(safe-area-inset-right,0px));}
+.tool{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--glass);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:grid;place-items:center;cursor:pointer;
+  transition:background .2s,border-color .2s;}
+.tool:hover{background:var(--glass-hi);}
+.tool[aria-pressed="true"]{border-color:rgba(255,122,26,.7);box-shadow:inset 0 0 0 1px rgba(255,122,26,.35);}
+.tool svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.tool:focus-visible,.poi button:focus-visible,.map-wrap:focus-visible,.zoom button:focus-visible,#tape:focus-visible{outline:2px solid var(--marker);outline-offset:2px;}
+
+/* --- POI pointers --- */
+#pois{position:absolute;inset:0;pointer-events:none;z-index:3;}
+.poi{position:absolute;left:0;top:0;will-change:transform;}
+.poi .dot{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--marker);
+  box-shadow:0 0 0 2px rgba(255,255,255,.9);transform:scale(0);transition:transform .35s cubic-bezier(.3,1.6,.5,1);}
+.poi .dot::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--marker);opacity:0;}
+.poi.in .dot::after{animation:ping 2.6s ease-out infinite;animation-delay:inherit;}
+.poi .stem{position:absolute;left:-1px;bottom:0;width:2px;height:var(--h,60px);transform-origin:bottom;transform:scaleY(0);
+  background:linear-gradient(to top,rgba(255,255,255,.95),rgba(255,255,255,.5));transition:transform .55s cubic-bezier(.2,.8,.2,1);}
+.poi button{position:absolute;left:0;bottom:var(--h,60px);transform:translate(-50%,-6px) scale(.85);opacity:0;pointer-events:auto;
+  display:flex;align-items:center;gap:8px;white-space:nowrap;cursor:pointer;
+  padding:6px 10px 6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--glass);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);text-align:left;
+  transition:opacity .4s ease,transform .5s cubic-bezier(.2,.9,.25,1.2),background .2s,border-color .2s;}
+.poi button:hover,.poi.sel button{background:var(--glass-hi);border-color:rgba(255,122,26,.7);}
+.poi .tri{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid var(--marker);flex:none;
+  filter:drop-shadow(0 1px 0 var(--marker-deep));}
+.poi .nm{font-family:var(--f-display);font-stretch:75%;font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;line-height:1;}
+.poi .sub{display:block;margin-top:3px;font:400 10.5px/1 var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+.poi.in .dot{transform:scale(1);}
+.poi.in .stem{transform:scaleY(1);}
+.poi.in button{opacity:1;transform:translate(-50%,-6px) scale(1);transition-delay:calc(var(--d,0ms) + 260ms);}
+.poi.in .stem{transition-delay:calc(var(--d,0ms) + 80ms);}
+.poi.in .dot{transition-delay:var(--d,0ms);}
+.poi.hid .dot{background:var(--hidden);}
+.poi.hid .stem{background:repeating-linear-gradient(to top,rgba(255,255,255,.8) 0 4px,transparent 4px 8px);}
+.poi.hid .tri{border-bottom-color:var(--hidden);filter:none;}
+.poi.hid .nm{color:#d9e3df;}
+.poi.off{visibility:hidden;}
+#pois.labels-off .poi{display:none;}
+@keyframes ping{0%{transform:scale(.6);opacity:.9}70%{transform:scale(2.2);opacity:0}100%{opacity:0}}
+
+/* --- Info card --- */
+.card{position:absolute;z-index:6;width:min(320px,calc(100vw - 32px));
+  left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  padding:14px 16px 14px;border-radius:var(--r);background:var(--glass);border:1px solid var(--line);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:flex;flex-direction:column;gap:8px;
+  transition:transform .4s cubic-bezier(.2,.8,.2,1),opacity .3s;}
+.card .k{font:500 10.5px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.card h2{margin:0;font-family:var(--f-display);font-stretch:70%;font-weight:800;font-size:28px;line-height:.95;text-transform:uppercase;letter-spacing:.01em;}
+.card p{margin:0;font-size:13.5px;line-height:1.5;color:#d6e0dc;max-width:60ch;}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-top:2px;}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.stat b{font:500 15px/1.1 var(--f-mono);font-variant-numeric:tabular-nums;}
+.stat span{font:400 10px/1.2 var(--f-mono);color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+.vis{display:inline-flex;align-items:center;gap:6px;font:500 11px/1 var(--f-mono);color:var(--muted);}
+.vis i{width:8px;height:8px;border-radius:50%;background:var(--marker);}
+.vis.no i{background:transparent;border:1.5px dashed var(--hidden);}
+.hint{display:flex;flex-wrap:wrap;gap:6px 14px;font:400 11.5px/1.4 var(--f-mono);color:var(--muted);}
+.hint kbd{font:inherit;color:var(--text);}
+
+/* --- Compass tape --- */
+.tape-wrap{position:absolute;z-index:4;left:50%;transform:translateX(-50%);
+  bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(560px,calc(100vw - 32px - 2 * 260px));min-width:0;}
+#tape{display:block;width:100%;height:46px;border-radius:10px;background:var(--glass);border:1px solid var(--line);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);cursor:ew-resize;}
+
+/* --- Map --- */
+.map-wrap{position:absolute;z-index:6;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  width:var(--ms,232px);height:var(--ms,232px);border-radius:50%;transition:width .45s cubic-bezier(.2,.8,.2,1),height .45s cubic-bezier(.2,.8,.2,1);}
+.map-wrap.big{--ms:min(440px,calc(100vh - 140px),calc(100vw - 32px));}
+#map{width:100%;height:100%;display:block;border-radius:50%;cursor:crosshair;
+  box-shadow:0 0 0 3px rgba(244,241,232,.9),0 0 0 4px rgba(0,0,0,.35),0 18px 40px rgba(0,0,0,.45);}
+.zoom{position:absolute;left:-14px;bottom:8px;display:flex;flex-direction:column;gap:4px;}
+.zoom button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--glass-hi);cursor:pointer;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font:500 15px/1 var(--f-mono);display:grid;place-items:center;}
+.map-label{position:absolute;left:50%;top:-24px;transform:translateX(-50%);white-space:nowrap;
+  font:500 10.5px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-shadow:0 1px 8px rgba(0,0,0,.6);}
+
+/* --- Loader --- */
+.loader{position:absolute;inset:0;z-index:20;display:grid;place-items:center;background:var(--ink);transition:opacity .9s ease;}
+.loader.done{opacity:0;pointer-events:none;}
+.loader div{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:0 24px;}
+.loader b{font-family:var(--f-display);font-stretch:62%;font-weight:800;font-size:44px;text-transform:uppercase;letter-spacing:.02em;}
+.loader span{font:400 12px/1.5 var(--f-mono);color:var(--muted);}
+.bar{width:180px;height:2px;background:var(--line);overflow:hidden;border-radius:2px;}
+.bar::after{content:"";display:block;height:100%;width:40%;background:var(--marker);animation:slide 1.1s ease-in-out infinite;}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
+
+@media (max-width: 860px){
+  .tape-wrap{width:calc(100vw - 32px);bottom:calc(16px + env(safe-area-inset-bottom,0px));}
+  .card{bottom:calc(74px + env(safe-area-inset-bottom,0px));}
+  .map-wrap{--ms:150px;bottom:auto;top:calc(70px + env(safe-area-inset-top,0px));}
+  .map-wrap.big{--ms:min(340px,calc(100vw - 32px));}
+  .map-label{top:auto;bottom:-20px;}
+  .zoom{left:-38px;bottom:auto;top:0;}
+  .card.idle{display:none;}
+}
+@media (max-width: 520px){
+  .head{max-width:52vw;}
+  .meta .ll{display:none;}
+  .tools{flex-direction:column;}
+  .map-wrap{top:auto;bottom:calc(74px + env(safe-area-inset-bottom,0px));--ms:128px;}
+  .card{right:auto;bottom:calc(214px + env(safe-area-inset-bottom,0px));}
+  .zoom{left:-38px;top:auto;bottom:0;}
+  .map-label{display:none;}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;animation:none!important;}
+}
+</style>
+
+<div id="app">
+  <canvas id="gl" aria-label="360 degree panorama from the summit of Gordons Knob. Drag to look around." role="img"></canvas>
+  <div id="pois" aria-label="Points of interest"></div>
+
+  <header class="head">
+    <div class="eyebrow">Gordon Range · Mt Richmond Forest Park</div>
+    <h1>Gordons Knob</h1>
+    <div class="meta">1,592 m <span class="ll">· 41°36′14″S 172°56′13″E</span></div>
+    <div class="chip" id="chip" title="Swap in your own photo by setting PANORAMA.image in the page config"><i></i><span>Placeholder view · rendered from elevation data</span></div>
+  </header>
+
+  <nav class="tools" aria-label="View controls">
+    <button class="tool" id="bLabels" aria-pressed="true" title="Show or hide markers" aria-label="Show or hide markers">
+      <svg viewBox="0 0 24 24"><path d="M12 3 4 17h16z"/><path d="M12 17v4"/></svg></button>
+    <button class="tool" id="bSpin" aria-pressed="false" title="Slow auto-rotate" aria-label="Slow auto-rotate">
+      <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button>
+    <button class="tool" id="bNorth" title="Face north" aria-label="Face north">
+      <svg viewBox="0 0 24 24"><path d="M12 3 7 20l5-4 5 4z"/></svg></button>
+    <button class="tool" id="bFull" title="Fullscreen" aria-label="Fullscreen">
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </nav>
+
+  <aside class="card idle" id="card" aria-live="polite"></aside>
+
+  <div class="tape-wrap"><canvas id="tape" tabindex="0" aria-label="Compass heading. Drag or use arrow keys to turn."></canvas></div>
+
+  <div class="map-wrap" id="mapWrap" tabindex="0" aria-label="Topographic map. Click to look toward a place, double-click to enlarge.">
+    <div class="map-label" id="mapLabel">Topo · 18 km radius</div>
+    <canvas id="map"></canvas>
+    <div class="zoom"><button id="zIn" aria-label="Zoom map in">+</button><button id="zOut" aria-label="Zoom map out">−</button></div>
+  </div>
+
+  <div class="loader" id="loader"><div><b>Gordons Knob</b><div class="bar"></div><span id="loadMsg">Rendering the view from 1,592 m…</span></div></div>
+</div>
+
+<script>
+/* =========================================================================
+   CONFIG — edit here.
+   PANORAMA.image: URL or data: URI of an equirectangular (2:1) 360° photo.
+                   Leave null to use the terrain placeholder.
+   PANORAMA.centreBearing: true bearing (degrees) at the horizontal centre of the photo.
+   PANORAMA.horizonOffset: degrees to raise (+) or lower (−) the photo's horizon if it isn't level.
+   ========================================================================= */
+const PANORAMA = { image: null, centreBearing: 180, horizonOffset: 0 };
+
+const VIEWPOINT = { name: "Gordons Knob", lat: -41.6039, lon: 172.9369, height: 1592, eye: 6 };
+
+/* Positions are approximate (snapped to the highest nearby cell of a 200 m elevation grid). */
+const POIS = [
+  { name: "Red Hill",     lat: -41.6264, lon: 173.0558, height: 1790, kind: "Peak",
+    note: "Highest point of the Richmond Range, on the ultramafic Red Hills mineral belt. The rust-coloured rock grows little more than tussock and scrub." },
+  { name: "Mt Rintoul",   lat: -41.5186, lon: 173.2336, height: 1731, kind: "Peak",
+    note: "A big scree-sided peak on the Richmond Alpine Track and Te Araroa, with Mt Rintoul Hut just below its summit." },
+  { name: "Mt Richmond",  lat: -41.4736, lon: 173.3946, height: 1760, kind: "Peak",
+    note: "The forest park's namesake, rising above the Pelorus and Wairau headwaters." },
+  { name: "Mt Fishtail",  lat: -41.4449, lon: 173.4955, height: 1641, kind: "Peak",
+    note: "Its split summit is easy to pick out at the north-east end of the Richmond Range." },
+  { name: "Nelson",       lat: -41.2706, lon: 173.2840, height: null, kind: "City",
+    note: "Whakatū, the region's main city, at the head of Tasman Bay." },
+  { name: "Richmond",     lat: -41.3380, lon: 173.1830, height: null, kind: "Town",
+    note: "Town on the Waimea Plains, just south-west of Nelson." },
+  { name: "Tasman Bay",   lat: -41.1500, lon: 173.1000, height: null, kind: "Coast",
+    note: "Te Tai-o-Aorere. On a clear day it shows as a silver band beyond the Waimea foothills." },
+  { name: "Mt Arthur",    lat: -41.2185, lon: 172.6810, height: 1795, kind: "Peak",
+    note: "Marble peak in Kahurangi National Park, standing above the Graham and Pearse valleys." },
+  { name: "Mt Owen",      lat: -41.5509, lon: 172.5393, height: 1875, kind: "Peak",
+    note: "Highest point in Kahurangi. Its glaciated marble plateau sits over one of the country's deepest cave systems." },
+  { name: "Lake Rotoiti", lat: -41.8300, lon: 172.8500, height: 610, kind: "Lake",
+    note: "Glacial lake at St Arnaud in Nelson Lakes National Park, below the St Arnaud Range." },
+];
+</script>
+
+<script>
+/* Embedded elevation grid: 600×600 cells, 200 m spacing, centred on the viewpoint.
+   Little-endian uint16, metres + 100. Source: AWS Terrain Tiles (Terrarium; SRTM / LINZ derived). */
+const DEM_B64 = "__DEM_B64__";
+</script>
+
+<script>
+(() => {
+"use strict";
+const D2R = Math.PI / 180, R2D = 180 / Math.PI, TAU = Math.PI * 2;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = (id) => document.getElementById(id);
+
+/* ---------------- Elevation model ---------------- */
+const G = { n: 600, half: 60000, cs: 200 };
+const Z = (() => {
+  const bin = atob(DEM_B64), n = bin.length >> 1, a = new Float32Array(n);
+  for (let i = 0; i < n; i++) a[i] = (bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8)) - 100;
+  return a;
+})();
+const mLat = 111320, mLon = 111320 * Math.cos(VIEWPOINT.lat * D2R);
+const toEN = (lat, lon) => [(lon - VIEWPOINT.lon) * mLon, (lat - VIEWPOINT.lat) * mLat];
+function elevAt(e, n) {
+  const fx = (e + G.half) / G.cs - 0.5, fy = (G.half - n) / G.cs - 0.5;
+  if (fx < 0 || fy < 0 || fx >= G.n - 1 || fy >= G.n - 1) return NaN;
+  const ix = fx | 0, iy = fy | 0, tx = fx - ix, ty = fy - iy, k = iy * G.n + ix;
+  const a = Z[k], b = Z[k + 1], c = Z[k + G.n], d = Z[k + G.n + 1];
+  return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+}
+const EARTH_R = 6371000, REFRACT = 0.87;
+const z0 = Math.max(elevAt(0, 0), VIEWPOINT.height) + VIEWPOINT.eye;
+const angleTo = (z, d) => Math.atan2(z - z0 - (d * d) / (2 * EARTH_R) * REFRACT, d);
+
+/* ---------------- POI geometry ---------------- */
+for (const p of POIS) {
+  const [e, n] = toEN(p.lat, p.lon);
+  p.e = e; p.n = n;
+  p.dist = Math.hypot(e, n);
+  p.bearing = (Math.atan2(e, n) * R2D + 360) % 360;
+  p.z = elevAt(e, n);
+  p.elev = angleTo((p.z || 0) + (p.kind === "Peak" ? 0 : 5), p.dist);
+  // line of sight: is anything between here and there higher?
+  let hidden = false;
+  for (let d = 150; d < p.dist - 300; d += Math.max(60, d * 0.01)) {
+    const t = d / p.dist, z = elevAt(e * t, n * t);
+    if (angleTo(z, d) > p.elev + 0.04 * D2R) { hidden = true; break; }
+  }
+  p.hidden = hidden;
+}
+const sorted = [...POIS].sort((a, b) => a.bearing - b.bearing);
+sorted.forEach((p, i) => {
+  const prev = sorted[i - 1];
+  p.level = prev && p.bearing - prev.bearing < 7 ? (prev.level + 1) % 3 : 0;
+});
+
+/* ---------------- Placeholder panorama renderer ---------------- */
+const SUN = { az: 318 * D2R, el: 28 * D2R };
+const sunV = [Math.sin(SUN.az) * Math.cos(SUN.el), Math.cos(SUN.az) * Math.cos(SUN.el), Math.sin(SUN.el)];
+const mix = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function hash(i, j) {
+  let h = Math.imul(i, 374761393) + Math.imul(j, 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function vnoise(x, y, P) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const x0 = ((xi % P) + P) % P, x1 = (x0 + 1) % P;
+  const a = hash(x0, yi), b = hash(x1, yi), c = hash(x0, yi + 1), d = hash(x1, yi + 1);
+  return mix(mix(a, b, u), mix(c, d, u), v);
+}
+
+// Per-cell ground colour (vegetation zones × sun shading), shared by panorama and map.
+const terrainRGB = new Float32Array(G.n * G.n * 3);
+const hill = new Float32Array(G.n * G.n);
+(function buildGround() {
+  const N = G.n;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, z = Z[k];
+    const zl = Z[j * N + Math.max(0, i - 1)], zr = Z[j * N + Math.min(N - 1, i + 1)];
+    const zu = Z[Math.max(0, j - 1) * N + i], zd = Z[Math.min(N - 1, j + 1) * N + i];
+    const dx = (zr - zl) / (2 * G.cs), dy = (zu - zd) / (2 * G.cs);
+    const inv = 1 / Math.hypot(dx, dy, 1);
+    const lam = Math.max(0, (-dx * sunV[0] - dy * sunV[1] + sunV[2]) * inv);
+    // map hillshade from the conventional NW light
+    hill[k] = Math.max(0, (dx * 0.5 - dy * 0.5 + 0.7071) * inv / 1.0);
+    let r, g, b;
+    if (z <= 1) { r = 64; g = 98; b = 112; }                  // sea
+    else {
+      const e = i * G.cs - G.half, n = G.half - j * G.cs;
+      const bush = [30, 54, 36], beech = [52, 72, 46], tuss = [146, 132, 84], scree = [126, 118, 106], farm = [92, 108, 62];
+      let c = z < 300 ? farm : bush;
+      c = c.map((v, q) => mix(v, bush[q], smooth(150, 400, z)));
+      c = c.map((v, q) => mix(v, beech[q], smooth(850, 1150, z)));
+      c = c.map((v, q) => mix(v, tuss[q], smooth(1250, 1380, z)));
+      c = c.map((v, q) => mix(v, scree[q], smooth(1500, 1650, z)));
+      // ultramafic Red Hills: iron-red rock east and south-east of the Knob
+      const rh = smooth(9000, 4000, Math.hypot(e - 9000, n + 2500)) * smooth(800, 1100, z);
+      c = c.map((v, q) => mix(v, [150, 82, 52][q], rh * 0.8));
+      [r, g, b] = c;
+    }
+    const sh = z <= 1 ? 0.9 : 0.32 + 0.85 * lam;
+    terrainRGB[k * 3] = r * sh; terrainRGB[k * 3 + 1] = g * sh; terrainRGB[k * 3 + 2] = b * sh;
+  }
+})();
+function groundAt(e, n, out) {
+  const fx = (e + G.half) / G.cs - 0.5, fy = (G.half - n) / G.cs - 0.5;
+  const ix = Math.min(G.n - 2, Math.max(0, fx | 0)), iy = Math.min(G.n - 2, Math.max(0, fy | 0));
+  const tx = fx - ix, ty = fy - iy, k = (iy * G.n + ix) * 3, k2 = k + G.n * 3;
+  for (let q = 0; q < 3; q++) {
+    const a = terrainRGB[k + q], b = terrainRGB[k + 3 + q], c = terrainRGB[k2 + q], d = terrainRGB[k2 + 3 + q];
+    out[q] = (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+  }
+}
+
+function renderPlaceholder(W, H) {
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d"), img = ctx.createImageData(W, H), px = img.data;
+  const zen = [34, 86, 156], hor = [190, 211, 224], warm = [255, 236, 205];
+  const col = [0, 0, 0];
+  const maxD = G.half * 1.4;
+  for (let x = 0; x < W; x++) {
+    const u = (x + 0.5) / W;
+    const brg = (PANORAMA_CENTRE + (u - 0.5) * 360) * D2R;
+    const se = Math.sin(brg), ce = Math.cos(brg);
+    const sunCos = Math.cos(brg - SUN.az);
+    const glowH = Math.pow(Math.max(0, sunCos), 6);
+    const haze = [mix(hor[0], warm[0], glowH * 0.55), mix(hor[1], warm[1], glowH * 0.55), mix(hor[2], warm[2], glowH * 0.5)];
+    // terrain: march outward, painter's fill bottom-up
+    let yTop = H, d = 6;
+    while (d < maxD) {
+      const e = se * d, n = ce * d, z = elevAt(e, n);
+      if (z !== z) break; // left the grid
+      const a = angleTo(z, d);
+      const y = Math.max(0, Math.floor((0.5 - a / Math.PI) * H));
+      if (y < yTop) {
+        groundAt(e, n, col);
+        const f = 1 - Math.exp(-d / 26000);
+        const lift = 1 - Math.exp(-d / 90000);
+        let r = mix(col[0], haze[0], f) + lift * 10, g = mix(col[1], haze[1], f) + lift * 10, b = mix(col[2], haze[2], f) + lift * 14;
+        for (let yy = y; yy < yTop; yy++) {
+          let rr = r, gg = g, bb = b;
+          if (d < 2500) { // close ground: rock and tussock grain
+            const nz = hash(x * 3 + (yy >> 1), yy * 7) * 0.35 + vnoise(x / 6, yy / 4, 1 << 30) * 0.4 + 0.45;
+            const rock = smooth(0.52, 0.7, vnoise(x / 40, yy / 18, 1 << 30) * 0.7 + vnoise(x / 11, yy / 6, 1 << 30) * 0.3);
+            const k = 1 - d / 2500;
+            rr = mix(rr, 118 * nz + 20, rock * k * 0.8); gg = mix(gg, 114 * nz + 18, rock * k * 0.8); bb = mix(bb, 106 * nz + 18, rock * k * 0.8);
+            rr *= mix(1, nz, k); gg *= mix(1, nz, k); bb *= mix(1, nz * 0.95, k);
+          }
+          const o = (yy * W + x) * 4; px[o] = rr; px[o + 1] = gg; px[o + 2] = bb; px[o + 3] = 255;
+        }
+        yTop = y;
+      }
+      d += Math.max(5, d * 0.005);
+    }
+    // sky above the skyline
+    for (let y = 0; y < yTop; y++) {
+      const a = (0.5 - (y + 0.5) / H) * Math.PI;
+      const t = Math.pow(1 - Math.max(0, a) / (Math.PI / 2), 5);
+      let r = mix(zen[0], hor[0], t), g = mix(zen[1], hor[1], t), b = mix(zen[2], hor[2], t);
+      const cs = Math.sin(a) * Math.sin(SUN.el) + Math.cos(a) * Math.cos(SUN.el) * sunCos;
+      const glow = Math.pow(Math.max(0, cs), 900) * 3 + Math.pow(Math.max(0, cs), 40) * 0.45 + Math.pow(Math.max(0, cs), 6) * 0.18;
+      r = mix(r, warm[0], Math.min(1, glow)); g = mix(g, warm[1], Math.min(1, glow)); b = mix(b, warm[2], Math.min(1, glow));
+      if (a > 0.01 && a < 0.6) { // high, thin cloud
+        const ad = a * R2D;
+        let c = vnoise(u * 36, ad * 0.55, 36) * 0.55 + vnoise(u * 90, ad * 1.4, 90) * 0.3 + vnoise(u * 220, ad * 3.5, 220) * 0.15;
+        c = smooth(0.55, 0.85, c) * smooth(1, 6, ad) * smooth(34, 12, ad) * 0.75;
+        const lit = 235 + glow * 20;
+        r = mix(r, lit, c); g = mix(g, lit, c); b = mix(b, lit + 6, c);
+      }
+      const o = (y * W + x) * 4; px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+/* ---------------- WebGL viewer ---------------- */
+const canvas = $("gl");
+const gl = canvas.getContext("webgl2", { antialias: false, preserveDrawingBuffer: false });
+let PANORAMA_CENTRE = PANORAMA.centreBearing;
+const view = { yaw: 40, pitch: -2, fov: 62, vy: 0, vp: 0, target: null };
+
+const VS = `#version 300 es
+in vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`;
+const FS = `#version 300 es
+precision highp float;
+uniform sampler2D tex; uniform vec2 res; uniform float yaw, pitch, tanHalf, centre, hOff;
+out vec4 o;
+const float PI = 3.141592653589793;
+void main(){
+  vec2 q = gl_FragCoord.xy / res * 2. - 1.; q.x *= res.x / res.y;
+  vec3 d = normalize(vec3(q.x * tanHalf, q.y * tanHalf, 1.));
+  float cp = cos(pitch), sp = sin(pitch);
+  d = vec3(d.x, d.y * cp + d.z * sp, -d.y * sp + d.z * cp);
+  float az = yaw + atan(d.x, d.z);
+  float el = asin(clamp(d.y, -1., 1.)) - hOff;
+  vec2 uv = vec2(fract((az - centre) / (2. * PI) + .5), clamp(.5 - el / PI, 0., 1.));
+  vec2 dx = dFdx(uv), dy = dFdy(uv);
+  dx.x -= floor(dx.x + .5); dy.x -= floor(dy.x + .5);
+  vec3 c = textureGrad(tex, uv, dx, dy).rgb;
+  float v = length(q / vec2(res.x / res.y, 1.));
+  c *= 1. - .22 * smoothstep(.55, 1.45, v);
+  o = vec4(c, 1.);
+}`;
+let prog, uni = {}, texReady = false;
+function initGL() {
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o);
+    if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  for (const n of ["tex", "res", "yaw", "pitch", "tanHalf", "centre", "hOff"]) uni[n] = gl.getUniformLocation(prog, n);
+  gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  const af = gl.getExtension("EXT_texture_filter_anisotropic");
+  if (af) gl.texParameterf(gl.TEXTURE_2D, af.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(af.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+}
+function upload(src) {
+  const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  let s = src;
+  if (src.width > max) {
+    const c = document.createElement("canvas"); c.width = max; c.height = Math.round(src.height * max / src.width);
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); s = c;
+  }
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, s);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  texReady = true;
+}
+
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+  sizeTape(); sizeMap();
+}
+const tanHalf = () => Math.tan(view.fov * D2R / 2);
+const hfov = () => 2 * Math.atan(tanHalf() * W / H) * R2D;
+
+function project(bearing, elev) {
+  const th = tanHalf(), dyaw = (bearing - view.yaw) * D2R, ce = Math.cos(elev);
+  const wx = Math.sin(dyaw) * ce, wy = Math.sin(elev), wz = Math.cos(dyaw) * ce;
+  const cp = Math.cos(view.pitch * D2R), sp = Math.sin(view.pitch * D2R);
+  const dy = wy * cp - wz * sp, dz = wy * sp + wz * cp;
+  if (dz <= 0.02) return null;
+  const nx = wx / dz / th / (W / H), ny = dy / dz / th;
+  return [(nx + 1) / 2 * W, (1 - ny) / 2 * H];
+}
+function unprojectBearing(sx) {
+  const nx = (sx / W) * 2 - 1, th = tanHalf();
+  return (view.yaw + Math.atan(nx * th * W / H) * R2D + 360) % 360;
+}
+
+/* ---------------- POI DOM ---------------- */
+const poiLayer = $("pois");
+const fmtKm = (m) => (m / 1000).toFixed(m < 10000 ? 1 : 0) + " km";
+const fmtM = (m) => m == null ? "" : m.toLocaleString("en-NZ") + " m";
+const cardinal = (b) => ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(b / 22.5) % 16];
+const pad3 = (b) => String(Math.round(b) % 360).padStart(3, "0");
+let selected = null;
+// higher-level labels first, so lower labels paint over their stems
+[...POIS].sort((a, b) => b.level - a.level).forEach((p) => {
+  const el = document.createElement("div");
+  el.className = "poi" + (p.hidden ? " hid" : "");
+  el.style.setProperty("--h", (46 + p.level * 46) + "px");
+  el.innerHTML = `<span class="stem"></span><span class="dot"></span>
+    <button type="button" aria-label="${p.name}, ${p.kind}, ${fmtKm(p.dist)} away"><span class="tri"></span>
+    <span><span class="nm">${p.name}</span><span class="sub">${p.height ? fmtM(p.height) + " · " : ""}${fmtKm(p.dist)}</span></span></button>`;
+  el.querySelector("button").addEventListener("click", (ev) => { ev.stopPropagation(); select(p, true); });
+  poiLayer.appendChild(el);
+  p.el = el; p.onScreen = false; p.lastSeen = -1e9;
+});
+
+const card = $("card");
+function idleCard() {
+  card.classList.add("idle");
+  card.innerHTML = `<div class="k">You are standing on</div><h2>Gordons Knob</h2>
+    <p>The summit of the Gordon Range, looking across the Wairoa and Motueka catchments to Kahurangi, the Richmond Range and Tasman Bay.</p>
+    <div class="hint"><span><kbd>Drag</kbd> look around</span><span><kbd>Scroll</kbd> zoom</span><span><kbd>Tap</kbd> a marker</span></div>`;
+}
+function select(p, fly) {
+  selected = p;
+  POIS.forEach((q) => q.el.classList.toggle("sel", q === p));
+  if (!p) { idleCard(); return; }
+  card.classList.remove("idle");
+  card.innerHTML = `<div class="k">${p.kind} · bearing ${pad3(p.bearing)}° ${cardinal(p.bearing)}</div><h2>${p.name}</h2>
+    <p>${p.note}</p>
+    <div class="stats">
+      <div class="stat"><b>${fmtKm(p.dist)}</b><span>Distance</span></div>
+      <div class="stat"><b>${p.height ? fmtM(p.height) : "—"}</b><span>Height</span></div>
+      <div class="stat"><b>${(p.elev * R2D >= 0 ? "+" : "") + (p.elev * R2D).toFixed(1)}°</b><span>Above level</span></div>
+    </div>
+    <span class="vis ${p.hidden ? "no" : ""}"><i></i>${p.hidden ? "Hidden behind nearer ridges" : "In line of sight from the summit"}</span>`;
+  if (fly) flyTo(p.bearing, Math.max(-12, Math.min(8, p.elev * R2D + 4)));
+}
+
+/* ---------------- Interaction ---------------- */
+let downX = 0, downY = 0, dragging = false, lastX = 0, lastY = 0, lastT = 0, idleAt = performance.now(), spin = false;
+const pointers = new Map(); let pinch0 = 0, fov0 = 0;
+const clampPitch = (p) => Math.max(-70, Math.min(70, p));
+const clampFov = (f) => Math.max(22, Math.min(100, f));
+function wake() { idleAt = performance.now(); view.target = null; }
+canvas.addEventListener("pointerdown", (e) => {
+  canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a[0] - b[0], a[1] - b[1]); fov0 = view.fov; }
+  downX = e.clientX; downY = e.clientY;
+  dragging = true; canvas.classList.add("dragging"); lastX = e.clientX; lastY = e.clientY; lastT = performance.now();
+  view.vy = view.vp = 0; wake();
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (pinch0 > 0) view.fov = clampFov(fov0 * pinch0 / d); return;
+  }
+  const k = view.fov / H, now = performance.now(), dt = Math.max(1, now - lastT);
+  const dx = (e.clientX - lastX) * k, dy = (e.clientY - lastY) * k;
+  view.yaw -= dx; view.pitch = clampPitch(view.pitch + dy);
+  view.vy = -dx / dt * 16; view.vp = dy / dt * 16;
+  lastX = e.clientX; lastY = e.clientY; lastT = now; wake();
+});
+const endPtr = (e) => {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) { dragging = false; canvas.classList.remove("dragging"); if (performance.now() - lastT > 80) view.vy = view.vp = 0; }
+  if (pointers.size < 2) pinch0 = 0;
+};
+canvas.addEventListener("pointerup", endPtr); canvas.addEventListener("pointercancel", endPtr);
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault(); wake();
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey) { view.yaw += e.deltaX * view.fov / H; return; }
+  view.fov = clampFov(view.fov * Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0012)));
+}, { passive: false });
+canvas.addEventListener("click", (e) => { if (Math.hypot(e.clientX - downX, e.clientY - downY) < 5 && selected) select(null); });
+window.addEventListener("keydown", (e) => {
+  if (e.target.closest && e.target.closest("button")) { if (!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) return; }
+  const step = e.shiftKey ? 15 : 5; let used = true;
+  if (e.key === "ArrowLeft") view.yaw -= step; else if (e.key === "ArrowRight") view.yaw += step;
+  else if (e.key === "ArrowUp") view.pitch = clampPitch(view.pitch + step); else if (e.key === "ArrowDown") view.pitch = clampPitch(view.pitch - step);
+  else if (e.key === "+" || e.key === "=") view.fov = clampFov(view.fov * 0.85); else if (e.key === "-") view.fov = clampFov(view.fov / 0.85);
+  else if (e.key === "Escape") select(null); else used = false;
+  if (used) { e.preventDefault(); wake(); }
+});
+function flyTo(bearing, pitch) {
+  let d = ((bearing - view.yaw) % 360 + 540) % 360 - 180;
+  view.target = { yaw: view.yaw + d, pitch: pitch ?? view.pitch, t0: performance.now(), y0: view.yaw, p0: view.pitch, dur: reduceMotion ? 1 : 1100 + Math.abs(d) * 4 };
+  view.vy = view.vp = 0; idleAt = performance.now();
+}
+
+const bLabels = $("bLabels"), bSpin = $("bSpin");
+bLabels.onclick = () => {
+  const on = bLabels.getAttribute("aria-pressed") !== "true";
+  bLabels.setAttribute("aria-pressed", on); poiLayer.classList.toggle("labels-off", !on);
+  if (on) POIS.forEach((p) => { p.el.classList.remove("in"); p.onScreen = false; });
+};
+bSpin.onclick = () => { spin = !spin; bSpin.setAttribute("aria-pressed", spin); idleAt = 0; };
+$("bNorth").onclick = () => flyTo(0, 0);
+$("bFull").onclick = () => {
+  const el = $("app");
+  try {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else (el.requestFullscreen || el.webkitRequestFullscreen).call(el)?.catch?.(() => {});
+  } catch (_) {}
+};
+
+/* ---------------- Compass tape ---------------- */
+const tape = $("tape"), tctx = tape.getContext("2d");
+let TW = 0, TH = 0;
+function sizeTape() { TW = tape.clientWidth; TH = tape.clientHeight; tape.width = TW * DPR; tape.height = TH * DPR; }
+function drawTape() {
+  const c = tctx; c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, TW, TH);
+  const span = Math.max(90, Math.min(200, hfov() * 1.6)), ppd = TW / span, mid = TW / 2, yaw = ((view.yaw % 360) + 360) % 360;
+  c.font = "500 10px 'IBM Plex Mono', monospace"; c.textAlign = "center"; c.textBaseline = "alphabetic";
+  const s0 = Math.floor((yaw - span / 2) / 5) * 5;
+  for (let b = s0; b <= yaw + span / 2; b += 5) {
+    const x = mid + (b - yaw) * ppd, bb = ((b % 360) + 360) % 360, major = bb % 45 === 0, mid15 = bb % 15 === 0;
+    const fade = 1 - Math.pow(Math.abs(x - mid) / mid, 3);
+    c.globalAlpha = Math.max(0, fade);
+    c.strokeStyle = "rgba(238,243,239,.75)"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x + .5, TH); c.lineTo(x + .5, TH - (major ? 14 : mid15 ? 10 : 6)); c.stroke();
+    if (major) {
+      const lab = ["N","NE","E","SE","S","SW","W","NW"][bb / 45];
+      c.fillStyle = bb === 0 ? "#ff7a1a" : "#eef3ef"; c.font = "700 13px 'Archivo', sans-serif"; c.fillText(lab, x, 17);
+      c.font = "500 10px 'IBM Plex Mono', monospace";
+    } else if (mid15) { c.fillStyle = "rgba(169,186,180,.95)"; c.fillText(pad3(bb), x, 17); }
+  }
+  // POI ticks
+  for (const p of POIS) {
+    let d = ((p.bearing - yaw) % 360 + 540) % 360 - 180; if (Math.abs(d) > span / 2) continue;
+    const x = mid + d * ppd; c.globalAlpha = 1 - Math.pow(Math.abs(x - mid) / mid, 3);
+    c.fillStyle = p.hidden ? "#9fb1ab" : "#ff7a1a";
+    c.beginPath(); c.moveTo(x - 4, TH - 17); c.lineTo(x + 4, TH - 17); c.lineTo(x, TH - 23); c.closePath(); c.fill();
+  }
+  c.globalAlpha = 1;
+  // needle + readout
+  c.fillStyle = "#ff7a1a"; c.fillRect(mid - 1, 22, 2, TH - 22);
+  const txt = pad3(yaw) + "° " + cardinal(yaw); c.font = "500 11px 'IBM Plex Mono', monospace";
+  const w = c.measureText(txt).width + 12;
+  c.fillStyle = "rgba(14,26,27,.92)"; c.fillRect(mid - w / 2, 23, w, 15);
+  c.fillStyle = "#eef3ef"; c.fillText(txt, mid, 34);
+}
+let tapeDrag = null;
+tape.addEventListener("pointerdown", (e) => { tape.setPointerCapture(e.pointerId); tapeDrag = e.clientX; wake(); });
+tape.addEventListener("pointermove", (e) => {
+  if (tapeDrag == null) return; const span = Math.max(90, Math.min(200, hfov() * 1.6));
+  view.yaw -= (e.clientX - tapeDrag) * span / TW; tapeDrag = e.clientX; wake();
+});
+tape.addEventListener("pointerup", () => tapeDrag = null); tape.addEventListener("pointercancel", () => tapeDrag = null);
+
+/* ---------------- Topo map ---------------- */
+const mapCv = $("map"), mctx = mapCv.getContext("2d"), mapWrap = $("mapWrap");
+const RADII = [6000, 12000, 18000, 32000, 55000]; let rIdx = 2, mapR = RADII[rIdx], mapRTarget = mapR;
+let MS = 0;
+function sizeMap() { MS = mapCv.clientWidth; mapCv.width = MS * DPR; mapCv.height = MS * DPR; }
+const topo = document.createElement("canvas");
+const TS = 2; // topo canvas pixels per DEM cell
+function buildTopo() {
+  const N = G.n, S = N * TS; topo.width = S; topo.height = S;
+  const c = topo.getContext("2d"), im = c.createImageData(N, N), p = im.data;
+  const stops = [[0, [214, 228, 214]], [250, [224, 232, 206]], [600, [200, 220, 178]], [1000, [184, 208, 160]],
+                 [1300, [222, 220, 186]], [1550, [234, 226, 206]], [1900, [242, 238, 232]]];
+  for (let k = 0; k < N * N; k++) {
+    const z = Z[k]; let r, g, b;
+    if (z <= 1) { r = 178; g = 210; b = 222; }
+    else {
+      let s = 0; while (s < stops.length - 2 && z > stops[s + 1][0]) s++;
+      const [z1, c1] = stops[s], [z2, c2] = stops[s + 1], t = Math.min(1, Math.max(0, (z - z1) / (z2 - z1)));
+      r = mix(c1[0], c2[0], t); g = mix(c1[1], c2[1], t); b = mix(c1[2], c2[2], t);
+      const h = 0.62 + 0.5 * hill[k]; r *= h; g *= h; b *= h;
+    }
+    p[k * 4] = r; p[k * 4 + 1] = g; p[k * 4 + 2] = b; p[k * 4 + 3] = 255;
+  }
+  const tmp = document.createElement("canvas"); tmp.width = N; tmp.height = N; tmp.getContext("2d").putImageData(im, 0, 0);
+  c.imageSmoothingEnabled = true; c.drawImage(tmp, 0, 0, S, S);
+  // contours by marching squares: 50 m intermediate, 250 m index
+  const segs = new Map();
+  const add = (L, x1, y1, x2, y2) => { let a = segs.get(L); if (!a) segs.set(L, a = []); a.push(x1, y1, x2, y2); };
+  for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
+    const a = Z[j * N + i], b = Z[j * N + i + 1], cc = Z[(j + 1) * N + i + 1], d = Z[(j + 1) * N + i];
+    const lo = Math.min(a, b, cc, d), hi = Math.max(a, b, cc, d);
+    if (hi <= 1) continue;
+    for (let L = Math.ceil(Math.max(lo, 1) / 50) * 50; L < hi; L += 50) {
+      const pts = [];
+      const edge = (v1, v2, x1, y1, x2, y2) => { if ((v1 < L) !== (v2 < L)) { const t = (L - v1) / (v2 - v1); pts.push(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t); } };
+      edge(a, b, i, j, i + 1, j); edge(b, cc, i + 1, j, i + 1, j + 1); edge(cc, d, i + 1, j + 1, i, j + 1); edge(d, a, i, j + 1, i, j);
+      if (pts.length >= 4) add(L, pts[0], pts[1], pts[2], pts[3]);
+      if (pts.length === 8) add(L, pts[4], pts[5], pts[6], pts[7]);
+    }
+  }
+  c.lineCap = "round";
+  for (const [L, a] of segs) {
+    const idx = L % 250 === 0;
+    c.strokeStyle = idx ? "rgba(122,74,32,.62)" : "rgba(140,92,48,.30)"; c.lineWidth = idx ? 1.25 : 0.7;
+    c.beginPath();
+    for (let q = 0; q < a.length; q += 4) { c.moveTo((a[q] + .5) * TS, (a[q + 1] + .5) * TS); c.lineTo((a[q + 2] + .5) * TS, (a[q + 3] + .5) * TS); }
+    c.stroke();
+  }
+}
+function drawMap() {
+  const c = mctx, S = MS; c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, S, S);
+  mapR += (mapRTarget - mapR) * 0.18;
+  const r = S / 2, mpp = mapR / r; // metres per css px
+  const toPx = (e, n) => [r + e / mpp, r - n / mpp];
+  c.save(); c.beginPath(); c.arc(r, r, r, 0, TAU); c.clip();
+  // source window in topo pixels
+  const pxPerM = TS / G.cs, sx = (G.half - mapR) * pxPerM, sw = 2 * mapR * pxPerM;
+  c.fillStyle = "#dfe6dc"; c.fillRect(0, 0, S, S);
+  c.imageSmoothingEnabled = true; c.drawImage(topo, sx, sx, sw, sw, 0, 0, S, S);
+  // grid every 5 km (km grid feel of Topo50)
+  const gstep = mapR > 30000 ? 10000 : mapR > 10000 ? 5000 : 2000;
+  c.strokeStyle = "rgba(40,70,90,.13)"; c.lineWidth = 1; c.beginPath();
+  for (let g = -Math.floor(mapR / gstep) * gstep; g <= mapR; g += gstep) {
+    const x = r + g / mpp; c.moveTo(x, 0); c.lineTo(x, S); c.moveTo(0, x); c.lineTo(S, x);
+  }
+  c.stroke();
+  // view cone
+  const yaw = ((view.yaw % 360) + 360) % 360, hf = Math.min(170, hfov());
+  const a0 = (yaw - hf / 2 - 90) * D2R, a1 = (yaw + hf / 2 - 90) * D2R;
+  const grd = c.createRadialGradient(r, r, 0, r, r, r);
+  grd.addColorStop(0, "rgba(255,122,26,.55)"); grd.addColorStop(1, "rgba(255,122,26,.05)");
+  c.fillStyle = grd; c.beginPath(); c.moveTo(r, r); c.arc(r, r, r, a0, a1); c.closePath(); c.fill();
+  c.strokeStyle = "rgba(196,82,10,.85)"; c.lineWidth = 1.2;
+  c.beginPath(); c.moveTo(r, r); c.lineTo(r + Math.cos(a0) * r, r + Math.sin(a0) * r); c.moveTo(r, r); c.lineTo(r + Math.cos(a1) * r, r + Math.sin(a1) * r); c.stroke();
+  c.setLineDash([3, 4]); c.beginPath(); c.moveTo(r, r);
+  c.lineTo(r + Math.cos((yaw - 90) * D2R) * r, r + Math.sin((yaw - 90) * D2R) * r); c.stroke(); c.setLineDash([]);
+  // POIs
+  c.font = "600 10px 'Archivo', sans-serif"; c.textBaseline = "middle";
+  for (const p of POIS) {
+    const [x, y] = toPx(p.e, p.n);
+    const out = Math.hypot(x - r, y - r) > r - 8;
+    let X = x, Y = y;
+    if (out) { const ang = Math.atan2(y - r, x - r); X = r + Math.cos(ang) * (r - 8); Y = r + Math.sin(ang) * (r - 8); }
+    c.fillStyle = p === selected ? "#ff7a1a" : p.hidden ? "#7d8f89" : "#c4520a";
+    c.strokeStyle = "#fff"; c.lineWidth = 1.5;
+    c.beginPath();
+    if (out) c.arc(X, Y, 3, 0, TAU); else { c.moveTo(X, Y - 6); c.lineTo(X + 5, Y + 3.5); c.lineTo(X - 5, Y + 3.5); c.closePath(); }
+    c.fill(); c.stroke();
+    if (!out && (S > 200 || p === selected)) {
+      c.lineWidth = 3; c.strokeStyle = "rgba(255,255,255,.85)"; c.textAlign = x > r + r * .5 ? "right" : "left";
+      const tx = c.textAlign === "right" ? X - 8 : X + 8;
+      c.strokeText(p.name.toUpperCase(), tx, Y); c.fillStyle = "#2a2a22"; c.fillText(p.name.toUpperCase(), tx, Y);
+    }
+  }
+  // viewer
+  c.fillStyle = "#ff7a1a"; c.strokeStyle = "#fff"; c.lineWidth = 2.5;
+  c.beginPath(); c.arc(r, r, 5.5, 0, TAU); c.fill(); c.stroke();
+  c.restore();
+  // ring ticks + north
+  c.strokeStyle = "rgba(20,30,30,.55)"; c.lineWidth = 1;
+  for (let b = 0; b < 360; b += 10) {
+    const a = (b - 90) * D2R, l = b % 90 === 0 ? 9 : b % 30 === 0 ? 6 : 3;
+    c.beginPath(); c.moveTo(r + Math.cos(a) * r, r + Math.sin(a) * r); c.lineTo(r + Math.cos(a) * (r - l), r + Math.sin(a) * (r - l)); c.stroke();
+  }
+  c.fillStyle = "#c4520a"; c.font = "800 12px 'Archivo', sans-serif"; c.textAlign = "center"; c.textBaseline = "top"; c.fillText("N", r, 11);
+  // scale bar
+  const sb = mapR > 30000 ? 10000 : mapR > 10000 ? 5000 : 2000, sbpx = sb / mpp;
+  c.fillStyle = "rgba(20,30,30,.75)"; c.fillRect(r - sbpx / 2, S - 24, sbpx, 2.5);
+  c.font = "500 9.5px 'IBM Plex Mono', monospace"; c.textBaseline = "bottom"; c.fillText(sb / 1000 + " km", r, S - 26);
+}
+function setRadius(i) { rIdx = Math.max(0, Math.min(RADII.length - 1, i)); mapRTarget = RADII[rIdx]; $("mapLabel").textContent = `Topo · ${RADII[rIdx] / 1000} km radius`; }
+$("zIn").onclick = (e) => { e.stopPropagation(); setRadius(rIdx - 1); };
+$("zOut").onclick = (e) => { e.stopPropagation(); setRadius(rIdx + 1); };
+mapCv.addEventListener("wheel", (e) => { e.preventDefault(); e.stopPropagation(); setRadius(rIdx + (e.deltaY > 0 ? 1 : -1)); }, { passive: false });
+let mapClickTimer = 0;
+mapCv.addEventListener("click", (e) => {
+  const rect = mapCv.getBoundingClientRect(), r = rect.width / 2;
+  const x = e.clientX - rect.left - r, y = e.clientY - rect.top - r;
+  clearTimeout(mapClickTimer);
+  mapClickTimer = setTimeout(() => {
+    // nearest POI under the click, otherwise just look that way
+    const mpp = mapR / r; let best = null, bd = 14;
+    for (const p of POIS) { const d = Math.hypot(p.e / mpp - x, -p.n / mpp - y); if (d < bd) { bd = d; best = p; } }
+    if (best) select(best, true); else if (Math.hypot(x, y) > 6) flyTo((Math.atan2(x, -y) * R2D + 360) % 360);
+  }, 220);
+});
+mapCv.addEventListener("dblclick", (e) => { clearTimeout(mapClickTimer); mapWrap.classList.toggle("big"); setTimeout(sizeMap, 480); });
+mapWrap.addEventListener("keydown", (e) => { if (e.key === "Enter") { mapWrap.classList.toggle("big"); setTimeout(sizeMap, 480); } });
+new ResizeObserver(() => sizeMap()).observe(mapCv);
+
+/* ---------------- Frame loop ---------------- */
+const intro = { t0: 0, on: !reduceMotion };
+function frame(now) {
+  // camera motion
+  if (view.target) {
+    const t = Math.min(1, (now - view.target.t0) / view.target.dur), k = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    view.yaw = mix(view.target.y0, view.target.yaw, k); view.pitch = mix(view.target.p0, view.target.pitch, k);
+    if (t >= 1) view.target = null;
+  } else if (!dragging) {
+    view.yaw += view.vy; view.pitch = clampPitch(view.pitch + view.vp);
+    view.vy *= 0.92; view.vp *= 0.9;
+    if (Math.abs(view.vy) < 0.002) view.vy = 0;
+    const idle = now - idleAt;
+    if (!reduceMotion && (spin || idle > 14000) && !selected) view.yaw += 0.025 * Math.min(1, (idle - (spin ? 0 : 14000)) / 3000 + (spin ? 1 : 0));
+  }
+  if (gl && texReady) {
+    gl.uniform2f(uni.res, canvas.width, canvas.height);
+    gl.uniform1f(uni.yaw, view.yaw * D2R); gl.uniform1f(uni.pitch, view.pitch * D2R);
+    gl.uniform1f(uni.tanHalf, tanHalf()); gl.uniform1f(uni.centre, PANORAMA_CENTRE * D2R);
+    gl.uniform1f(uni.hOff, PANORAMA.horizonOffset * D2R);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  // POIs
+  const hOff = PANORAMA.horizonOffset * D2R;
+  let stagger = 0;
+  for (const p of POIS) {
+    const s = texReady ? project(p.bearing, p.elev + hOff) : null;
+    const vis = s && s[0] > -60 && s[0] < W + 60 && s[1] > -40 && s[1] < H + 220;
+    if (vis) {
+      p.el.style.transform = `translate3d(${s[0].toFixed(1)}px,${s[1].toFixed(1)}px,0)`;
+      p.el.classList.remove("off");
+      if (!p.onScreen && now > intro.t0) {
+        p.el.style.setProperty("--d", (now - p.lastSeen > 1500 ? stagger++ * 110 : 0) + "ms");
+        p.el.classList.add("in");
+      }
+      p.onScreen = true; p.lastSeen = now;
+    } else if (p.onScreen) {
+      p.onScreen = false; p.el.classList.remove("in"); p.el.classList.add("off");
+    } else p.el.classList.add("off");
+  }
+  drawTape(); drawMap();
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- Boot ---------------- */
+function boot() {
+  resize(); window.addEventListener("resize", resize);
+  buildTopo(); idleCard();
+  if (!gl) { $("loadMsg").textContent = "This view needs WebGL 2, which this browser hasn't enabled."; requestAnimationFrame(frame); return; }
+  initGL();
+  const finish = () => {
+    $("loader").classList.add("done");
+    intro.t0 = performance.now() + (reduceMotion ? 0 : 500);
+    if (intro.on) { view.yaw = 10; view.pitch = -1; view.fov = 70; flyTo(62, -1); view.target.dur = 3800; }
+    else view.yaw = 62;
+    idleAt = performance.now();
+  };
+  const usePlaceholder = () => {
+    PANORAMA_CENTRE = 180;
+    setTimeout(() => { upload(renderPlaceholder(4096, 2048)); finish(); }, 30);
+  };
+  if (PANORAMA.image) {
+    $("loadMsg").textContent = "Loading panorama…";
+    const im = new Image(); im.crossOrigin = "anonymous";
+    im.onload = () => { PANORAMA_CENTRE = PANORAMA.centreBearing; $("chip").hidden = true; upload(im); finish(); };
+    im.onerror = () => { $("loadMsg").textContent = "Couldn't load the photo, so showing the terrain render."; usePlaceholder(); };
+    im.src = PANORAMA.image;
+  } else usePlaceholder();
+  requestAnimationFrame(frame);
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(boot, boot); else boot();
+})();
+</script>
