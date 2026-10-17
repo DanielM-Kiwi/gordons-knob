@@ -1,6 +1,6 @@
 import cv2, numpy as np, math, gc
 S='work'
-exec(open(S+'/geo.py').read())
+exec(open(S+'/geo2.py').read())
 R=''
 W=18032; TOP=20.0; BOT=-27.0; ppd=W/360.0; Hh=int(round((TOP-BOT)*ppd)); OV=18704-C
 p2=cv2.imread(R+'pano2.jpg'); p1=cv2.imread(R+'pano1.jpg'); pm=cv2.imread(R+'looking at mot.jpg')
@@ -16,18 +16,11 @@ def ramp(d,w): t=np.clip(d/w,0,1); return t*t*(3-2*t)
 FE=1.2
 # ---------- layer samplers (per column chunk) ----------
 def L2(sl):
-    x=xs[sl]
-    def one(xc,hc):
-        mx=np.broadcast_to(xc[None].astype(np.float32),(Hh,len(xc))).copy(); my=(hc[None].astype(np.float32)-f*T[:,None])
-        o=cv2.remap(p2,mx,my,cv2.INTER_CUBIC,borderMode=cv2.BORDER_REPLICATE).astype(np.float32)
-        a=ramp(np.minimum(my,P2H-1-my),FE*ppd*f/2870)*(mx<=p2.shape[1]-1)
-        return o,a.astype(np.float32)
-    A,aa=one(x,hor[sl])
-    if (x<OV).any():
-        B,ab=one(x+C,hor_of_x(x+C)); w=ramp(x,OV)
-        wa=np.where(x<OV,w,1)[None]*aa; wb=np.where(x<OV,1-w,0)[None]*ab
-        A=(A*wa[...,None]+B*wb[...,None])/np.maximum(wa+wb,1e-6)[...,None]; aa=wa+wb
-    return A,aa
+    Bg=np.broadcast_to(beta[sl][None],(Hh,sl.stop-sl.start)); Eg=np.broadcast_to(eps[:,None],Bg.shape)
+    ob,oe,x2,y2=band_to_olddir(Bg,Eg)
+    o=cv2.remap(p2,x2.astype(np.float32),y2.astype(np.float32),cv2.INTER_CUBIC,borderMode=cv2.BORDER_REPLICATE).astype(np.float32)
+    a=ramp(np.minimum(y2,P2H-1-y2),FE*ppd*f/2870)*(x2<=p2.shape[1]-1)
+    return o,a.astype(np.float32),ob,oe
 def p1_xy(b,e):
     bx,bb,ss,xh,hh,f1=m1['bx'],m1['bb'],m1['ss'],m1['x'],m1['h'],float(m1['f1'])
     bu=np.where(b<bb[0],b+360,b)
@@ -39,14 +32,14 @@ def p1_xy(b,e):
     y=np.interp(x,xh,hh)-f1*np.tan(e)
     inr=ramp(bu-bb[0],8.0)*ramp(bb[-1]-bu,8.0)
     return x,y,inr
-def L1(sl):
-    Bg=np.broadcast_to(beta[sl][None],(Hh,sl.stop-sl.start)); Eg=np.broadcast_to(eps[:,None],Bg.shape)
+def L1(ob,oe):
+    Bg,Eg=ob,oe
     x,y,inr=p1_xy(Bg,Eg)
     o=cv2.remap(p1,x.astype(np.float32),y.astype(np.float32),cv2.INTER_CUBIC,borderMode=cv2.BORDER_REPLICATE).astype(np.float32)
     a=ramp(np.minimum(y,P1H-1-y),2.5*48.5)*ramp(np.minimum(x,P1W-1-x),10*48.5)*inr*(Eg<0)
     return o,a.astype(np.float32)
-def LM(sl):
-    B=np.radians(beta[sl]); Bg,Eg=np.meshgrid(B,eps)
+def LM(ob,oe):
+    Bg,Eg=np.radians(ob),oe
     d=np.stack([np.sin(Bg)*np.cos(Eg),np.cos(Bg)*np.cos(Eg),np.sin(Eg)],-1)
     cam=d@Rmot; z=-cam[...,2]; zz=np.where(z>1e-3,z,1e-3)
     mx=(cxm+fm*cam[...,0]/zz).astype(np.float32); my=(cym-fm*cam[...,1]/zz).astype(np.float32)
@@ -59,7 +52,7 @@ chunks=[slice(c,min(W,c+CH)) for c in range(0,W,CH)]
 band=(rowel<EL_BOT2+5)&(rowel>EL_BOT2+1.5)   # rows where p2 is solid and below horizon
 sum2=np.zeros((W,3));sum1=np.zeros((W,3));n1=np.zeros(W);summ=np.zeros((W,3));nm=np.zeros(W);sum2m=np.zeros((W,3));sum2_1=np.zeros((W,3))
 for sl in chunks:
-    A,aa=L2(sl); O1,a1=L1(sl); OM,am=LM(sl)
+    A,aa,ob,oe=L2(sl); O1,a1=L1(ob,oe); OM,am=LM(ob,oe)
     bm=np.broadcast_to(band,aa.shape)
     w1=(bm&(a1>0.99)).astype(np.float32); wm=(bm&(am>0.99)).astype(np.float32)
     sum2_1[sl]=(A*w1[...,None]).sum(0); sum1[sl]=(O1*w1[...,None]).sum(0); n1[sl]=w1.sum(0)
@@ -76,7 +69,7 @@ print('gain p1 median',np.median(g1[N1>0.5],0),'gain mot median',np.median(gm[Nm
 # ---------- pass 2: composite ----------
 img=np.zeros((Hh,W,3),np.uint8); alpha=np.zeros((Hh,W),np.float32)
 for sl in chunks:
-    A,aa=L2(sl); O1,a1=L1(sl); OM,am=LM(sl)
+    A,aa,ob,oe=L2(sl); O1,a1=L1(ob,oe); OM,am=LM(ob,oe)
     O1*=g1[sl][None]; OM*=gm[sl][None]
     lower=O1*a1[...,None]+OM*((1-a1)*am)[...,None]; al=a1+(1-a1)*am
     col=A*aa[...,None]+lower*(1-aa)[...,None]; at=aa+(1-aa)*al

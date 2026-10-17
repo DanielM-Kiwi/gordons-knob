@@ -1,5 +1,6 @@
 import cv2, numpy as np, math
 S='work'
+exec(open(S+'/geo2.py').read())
 img=cv2.imread(S+'/band_base.png').astype(np.float32)
 W,Hh,TOP,BOT=np.load(S+'/band_meta.npy'); W=int(W); Hh=int(Hh); ppd=W/360
 q=np.load(S+'/rot_us.npy'); fp,cx,cy=q[:3]; Rm=q[3:].reshape(3,3)
@@ -15,7 +16,8 @@ B0,B1,E0,E1=176.0,193.5,-9.5,1.0          # patch extent (old-frame bearings)
 def render(ppd_out):
     nb=int(round((B1-B0)*ppd_out)); ne=int(round((E1-E0)*ppd_out))
     Bg,Eg=np.meshgrid(B0+(np.arange(nb)+0.5)/ppd_out, E1-(np.arange(ne)+0.5)/ppd_out)
-    mx,my,ok=to_photo(Bg,Eg)
+    ob,oe,_,_=band_to_olddir(Bg,np.radians(Eg))
+    mx,my,ok=to_photo(ob,np.degrees(oe))
     col=cv2.remap(ph,mx,my,cv2.INTER_AREA if ppd_out<60 else cv2.INTER_LANCZOS4,borderMode=cv2.BORDER_REPLICATE)
     a=cv2.remap(fgs,mx,my,cv2.INTER_LINEAR,borderMode=cv2.BORDER_CONSTANT,borderValue=0)
     inside=ok&(mx>=0)&(mx<w-1)&(my>=0)&(my<h-1)

@@ -57,6 +57,7 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
 
 /* --- POI pointers --- */
 #pois{position:absolute;inset:0;pointer-events:none;z-index:3;}
+#route{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;}
 .poi{position:absolute;left:0;top:0;will-change:transform;}
 .poi .dot{position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:var(--marker);
   box-shadow:0 0 0 2px rgba(255,255,255,.9);transform:scale(0);transition:transform .35s cubic-bezier(.3,1.6,.5,1);}
@@ -173,12 +174,13 @@ h1{margin:0;font-family:var(--f-display);font-stretch:62%;font-weight:800;font-s
 
 <div id="app">
   <canvas id="gl" aria-label="360 degree panorama from the summit of Gordons Knob. Drag to look around." role="img"></canvas>
+  <canvas id="route" aria-hidden="true"></canvas>
   <div id="pois" aria-label="Points of interest"></div>
 
   <header class="head">
     <div class="eyebrow">Gordon Range · Mt Richmond Forest Park</div>
     <h1>Gordons Knob</h1>
-    <div class="meta">1,592 m <span class="ll">· 41°36′29″S 172°56′39″E</span></div>
+    <div class="meta">1685 m trig <span class="ll">· 41°36′35″S 172°56′41″E</span></div>
     <div class="chip" id="chip" hidden title="Swap in your own photo by setting PANORAMA.image in the page config"><i></i><span>Placeholder view · rendered from elevation data</span></div>
   </header>
 
@@ -234,11 +236,15 @@ const PANORAMA = {
   top: 20, bottom: -27, zenith: [38, 92, 179], nadir: [104, 95, 75], lowestView: -25,
 };
 
-/* Camera position: solved by fitting the photo's skyline to the elevation model,
-   about 750 m ESE of the gazetteer point, on the highest ground of the knob. */
-const VIEWPOINT = { name: "Gordons Knob", lat: -41.60794, lon: 172.94411, height: 1592, eye: 2 };
+/* Camera position: the 1685 m trig on the Gordon Range, where the walk ended, georeferenced
+   from the Topo50 spot heights. Gordons Knob itself (1592 m) is 880 m to the west-north-west. */
+const VIEWPOINT = { name: "Point 1685", lat: -41.60985, lon: 172.94482, height: 1685, eye: 1.6 };
 
 /* Photos taken on the day, pinned where they were taken looking. */
+/* The walk up, traced from the Topo50 map and draped on the 14 m elevation model:
+   [metres east, metres north, height] from the trig, plus whether each point is in view. */
+const ROUTE = __ROUTE__;
+
 const PHOTOS = [
   { name: "The summit crew", bearing: 184.6 + BAND_YAW, elev: -0.2, src: "__PHOTO_CREW__",
     caption: "On the knoll south of the summit, with the snow-capped St Arnaud and Travers ranges behind. This photo is blended into the panorama." },
@@ -248,6 +254,14 @@ const PHOTOS = [
 
 /* Positions are approximate (snapped to the highest nearby cell of a 200 m elevation grid). */
 const POIS = [
+  { name: "Gordons Knob", lat: -41.60411, lon: 172.93746, height: 1592, kind: "Peak",
+    note: "The named knob at the west end of this summit ridge. The walk passes below it on the way up to the 1685 m trig." },
+  { name: "Point 1614", lat: -41.60460, lon: 172.94066, height: 1614, kind: "Spot height", note: "Spot height on the ridge between the trig and Gordons Knob." },
+  { name: "Point 1564", lat: -41.60106, lon: 172.96422, height: 1564, kind: "Spot height", note: "High point on the Gordon Range, east across the head of the valley." },
+  { name: "Point 1519", lat: -41.59173, lon: 172.96935, height: 1519, kind: "Spot height", note: "Spot height on the Gordon Range, beside the marked route to the east." },
+  { name: "Point 1371", lat: -41.57996, lon: 172.96631, height: 1371, kind: "Spot height", note: "Spot height on the spur north of the Gordon Range." },
+  { name: "Point 1365", lat: -41.59856, lon: 172.95621, height: 1365, kind: "Spot height", note: "The knob at the bottom of the final climb, where the route turns up the ridge." },
+  { name: "Point 1164", lat: -41.58121, lon: 172.94594, height: 1164, kind: "Spot height", note: "On the spur followed up from the road end at the start of the walk." },
   { name: "Red Hill",     lat: -41.6264, lon: 173.0558, height: 1790, kind: "Peak",
     note: "Highest point of the Richmond Range, on the ultramafic Red Hills mineral belt. The rust-coloured rock grows little more than tussock and scrub." },
   { name: "Mt Rintoul",   lat: -41.5186, lon: 173.2336, height: 1731, kind: "Peak",
@@ -306,7 +320,7 @@ function elevAt(e, n) {
   return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
 }
 const EARTH_R = 6371000, REFRACT = 0.87;
-const z0 = elevAt(0, 0) + VIEWPOINT.eye;
+const z0 = VIEWPOINT.height + VIEWPOINT.eye;
 const angleTo = (z, d) => Math.atan2(z - z0 - (d * d) / (2 * EARTH_R) * REFRACT, d);
 
 /* ---------------- POI geometry ---------------- */
@@ -315,11 +329,12 @@ for (const p of POIS) {
   p.e = e; p.n = n;
   p.dist = Math.hypot(e, n);
   p.bearing = (Math.atan2(e, n) * R2D + 360) % 360;
-  p.z = elevAt(e, n);
-  p.elev = angleTo((p.z || 0) + (p.kind === "Peak" ? 0 : 5), p.dist);
+  const summit = (p.kind === "Peak" || p.kind === "Spot height") && p.height;
+  p.z = summit ? p.height : elevAt(e, n);       // surveyed heights where we have them
+  p.elev = angleTo((p.z || 0) + (summit ? 0 : 5), p.dist);
   // line of sight: is anything between here and there higher?
   let hidden = false;
-  for (let d = 150; d < p.dist - 300; d += Math.max(60, d * 0.01)) {
+  if (p.dist > 3000) for (let d = 150; d < p.dist - 300; d += Math.max(60, d * 0.01)) {
     const t = d / p.dist, z = elevAt(e * t, n * t);
     if (angleTo(z, d) > p.elev + 0.04 * D2R) { hidden = true; break; }
   }
@@ -606,8 +621,8 @@ lb.addEventListener("click", (e) => { if (e.target === lb) closePhoto(); });
 const card = $("card");
 function idleCard() {
   card.classList.add("idle");
-  card.innerHTML = `<div class="k">You are standing on</div><h2>Gordons Knob</h2>
-    <p>The summit of the Gordon Range, looking across the Wairoa and Motueka catchments to Kahurangi, the Richmond Range and Tasman Bay.</p>
+  card.innerHTML = `<div class="k">You are standing on the 1685 m trig</div><h2>Gordons Knob</h2>
+    <p>Top of the Gordon Range, above the knob itself, looking across the Wairoa and Motueka catchments to Kahurangi, the Richmond Range and Tasman Bay. The red line is the way up.</p>
     <div class="hint"><span><kbd>Drag</kbd> look around</span><span><kbd>Scroll</kbd> zoom</span><span><kbd>Tap</kbd> a marker</span></div>`;
 }
 function select(p, fly) {
@@ -830,12 +845,16 @@ function drawMap() {
     c.beginPath();
     if (out) c.arc(X, Y, 3, 0, TAU); else { c.moveTo(X, Y - 6); c.lineTo(X + 5, Y + 3.5); c.lineTo(X - 5, Y + 3.5); c.closePath(); }
     c.fill(); c.stroke();
-    if (!out && (S > 200 || p === selected)) {
+    if (!out && (S > 200 || p === selected) && (p.kind !== "Spot height" || p === selected)) {
       c.lineWidth = 3; c.strokeStyle = "rgba(255,255,255,.85)"; c.textAlign = x > r + r * .5 ? "right" : "left";
       const tx = c.textAlign === "right" ? X - 8 : X + 8;
       c.strokeText(p.name.toUpperCase(), tx, Y); c.fillStyle = "#2a2a22"; c.fillText(p.name.toUpperCase(), tx, Y);
     }
   }
+  // walking route
+  c.strokeStyle = "rgba(255,255,255,.8)"; c.lineWidth = 3.5; c.lineJoin = "round"; c.beginPath();
+  ROUTE.pts.forEach(([e, n], i) => { const [x, y] = toPx(e, n); i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.stroke();
+  c.strokeStyle = "#e8243f"; c.lineWidth = 2; c.stroke();
   // viewer
   c.fillStyle = "#ff7a1a"; c.strokeStyle = "#fff"; c.lineWidth = 2.5;
   c.beginPath(); c.arc(r, r, 5.5, 0, TAU); c.fill(); c.stroke();
@@ -872,6 +891,50 @@ mapCv.addEventListener("dblclick", (e) => { clearTimeout(mapClickTimer); mapWrap
 mapWrap.addEventListener("keydown", (e) => { if (e.key === "Enter") { mapWrap.classList.toggle("big"); setTimeout(sizeMap, 480); } });
 new ResizeObserver(() => sizeMap()).observe(mapCv);
 
+/* ---------------- Walking route ---------------- */
+const routeCv = $("route"), rctx = routeCv.getContext("2d");
+const RP = ROUTE.pts.map(([e, n, z], i) => {
+  const d = Math.hypot(e, n);
+  return { d, b: (Math.atan2(e, n) * R2D + 360) % 360, el: angleTo(z + 0.4, Math.max(d, 1)), vis: !!ROUTE.vis[i] };
+});
+function drawRoute(now) {
+  const c = rctx; if (routeCv.width !== canvas.width) { routeCv.width = canvas.width; routeCv.height = canvas.height; }
+  c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, W, H);
+  if (!texReady || poiLayer.classList.contains("labels-off")) return;
+  const reveal = reduceMotion ? 1 : Math.min(1, Math.max(0, (now - intro.t0 - 2600) / 3200));
+  const last = Math.floor(reveal * (RP.length - 1));
+  const zoom = Math.sqrt(56 / view.fov);
+  c.lineCap = "round"; c.lineJoin = "round";
+  let prev = null;
+  for (let i = 0; i <= last; i++) {
+    const p = RP[i]; if (p.d < 25) { prev = null; continue; }
+    const s = project(p.b, p.el);
+    if (!s || s[0] < -200 || s[0] > W + 200 || s[1] < -200 || s[1] > H + 200) { prev = null; continue; }
+    if (prev) {
+      const w = Math.max(1, Math.min(5.5, 320 / p.d)) * zoom;
+      const hid = !(p.vis && prev.p.vis);
+      if (hid) {
+        c.setLineDash([w * 0.9, w * 2.6]); c.strokeStyle = "rgba(255,92,112,.78)"; c.lineWidth = w * 0.75;
+      } else {
+        c.setLineDash([]); c.strokeStyle = "rgba(255,255,255,.45)"; c.lineWidth = w + 1.8;
+        c.beginPath(); c.moveTo(prev.s[0], prev.s[1]); c.lineTo(s[0], s[1]); c.stroke();
+        c.strokeStyle = "#ff3d5a"; c.lineWidth = w;
+      }
+      c.beginPath(); c.moveTo(prev.s[0], prev.s[1]); c.lineTo(s[0], s[1]); c.stroke();
+    }
+    prev = { p, s };
+  }
+  c.setLineDash([]);
+  // start of the walk
+  const s0 = reveal > 0 ? project(RP[0].b, RP[0].el) : null;
+  if (s0 && s0[0] > 0 && s0[0] < W && s0[1] > 0 && s0[1] < H) {
+    c.fillStyle = "#ff3d5a"; c.strokeStyle = "#fff"; c.lineWidth = 2;
+    c.beginPath(); c.arc(s0[0], s0[1], 4.5, 0, TAU); c.fill(); c.stroke();
+    c.font = "600 11px 'Archivo', sans-serif"; c.textBaseline = "middle"; c.lineWidth = 3; c.strokeStyle = "rgba(14,26,27,.8)";
+    const t = "Road end · start of the walk"; c.strokeText(t, s0[0] + 9, s0[1]); c.fillStyle = "#fff"; c.fillText(t, s0[0] + 9, s0[1]);
+  }
+}
+
 /* ---------------- Frame loop ---------------- */
 const intro = { t0: 0, on: !reduceMotion };
 function frame(now) {
@@ -903,7 +966,7 @@ function frame(now) {
   view.pitch = clampPitch(view.pitch);
   const shown = [];
   for (const p of MARKERS) {
-    const s = texReady ? project(p.bearing, p.elev + hOff) : null;
+    const s = texReady ? (p.calib ? project(p.calib.b + BAND_YAW, p.calib.e * D2R) : project(p.bearing, p.elev + hOff)) : null;
     const vis = s && s[0] > -60 && s[0] < W + 60 && s[1] > -40 && s[1] < H + 220;
     if (vis) {
       p.el.style.transform = `translate3d(${s[0].toFixed(1)}px,${s[1].toFixed(1)}px,0)`;
@@ -927,9 +990,14 @@ function frame(now) {
     L = Math.min(L, 4); tierRight[L] = p.sx + p.w / 2;
     if (p.tier !== L) { p.tier = L; p.el.style.setProperty("--h", (40 + L * 44) + "px"); }
   }
+  drawRoute(now);
   drawTape(); drawMap();
   requestAnimationFrame(frame);
 }
+
+/* ---------------- Calibration hook (calibration build only) ---------------- */
+const CALIBRATE = "__CALIBRATE__" === "1";
+if (CALIBRATE) window.__pano = { view, project, POIS, PHOTOS, flyTo, select, D2R, R2D, BAND_YAW, tanHalf, size: () => [W, H], canvas, poiLayer };
 
 /* ---------------- Boot ---------------- */
 function boot() {

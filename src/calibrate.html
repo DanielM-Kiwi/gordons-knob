@@ -1,0 +1,207 @@
+<style>
+/* Calibration build only: a working panel over the left of the panorama. */
+.cal{position:absolute;z-index:12;left:calc(16px + env(safe-area-inset-left,0px));top:calc(150px + env(safe-area-inset-top,0px));
+  bottom:calc(16px + env(safe-area-inset-bottom,0px));width:min(340px,calc(100vw - 32px));display:flex;flex-direction:column;gap:10px;
+  padding:14px;border-radius:12px;background:rgba(10,20,21,.86);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
+.cal h2{margin:0;font-family:var(--f-display);font-stretch:70%;font-weight:800;font-size:24px;text-transform:uppercase;line-height:1;}
+.cal p{margin:0;font-size:13px;line-height:1.5;color:#d6e0dc;}
+.cal .tabs{display:flex;gap:6px;}
+.cal .tabs button,.cal .btn{border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:7px 10px;cursor:pointer;font:600 12px/1 var(--f-body);}
+.cal .tabs button[aria-selected="true"]{background:var(--marker);border-color:var(--marker);color:#1a0d02;}
+.cal .btn.primary{background:#2fd6c6;border-color:#2fd6c6;color:#04201d;}
+.cal .list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px;}
+.cal .row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid transparent;}
+.cal .row.cur{border-color:rgba(255,122,26,.7);}
+.cal .row b{font:700 13px/1.2 var(--f-body);}
+.cal .row small{grid-column:1;font:400 10.5px/1.2 var(--f-mono);color:var(--muted);}
+.cal .row .acts{grid-column:2;grid-row:1 / span 2;display:flex;gap:4px;}
+.cal .row .acts button{border:1px solid var(--line);background:none;border-radius:6px;padding:5px 7px;cursor:pointer;font:500 11px/1 var(--f-mono);color:var(--text);}
+.cal .chip{font:500 10.5px/1 var(--f-mono);padding:3px 6px;border-radius:999px;background:rgba(255,255,255,.08);}
+.cal .chip.placed{background:#21c28a;color:#04150e;} .cal .chip.skip{background:#5b6a66;}
+.cal .status{font:500 11px/1.3 var(--f-mono);color:var(--muted);}
+.poi.placed .dot{background:#21c28a;}
+.poi.dragging button{border-color:#21c28a;}
+#pois.cal-on .poi .dot{width:14px;height:14px;left:-7px;top:-7px;pointer-events:auto;cursor:grab;}
+#pois.cal-on .poi .dot::before{content:"";position:absolute;left:6px;top:-6px;width:2px;height:26px;background:rgba(255,255,255,.7);}
+#pois.cal-on .poi .dot::after{display:none;}
+.seam{position:absolute;inset:0;z-index:25;display:grid;grid-template-rows:auto 1fr auto;gap:10px;padding:calc(60px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px));background:rgba(6,12,12,.94);}
+.seam .sbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.seam .vp{position:relative;overflow:hidden;border-radius:8px;border:1px solid var(--line);min-height:0;cursor:move;touch-action:none;}
+.seam canvas{position:absolute;left:0;top:0;}
+.seam label{font:500 12px/1 var(--f-mono);color:var(--muted);display:flex;gap:6px;align-items:center;}
+@media (max-width:860px){ .cal{top:auto;height:46vh;} }
+</style>
+
+<aside class="cal" id="cal" aria-label="Calibration">
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tLand" aria-selected="true">1 · Landmarks</button>
+    <button role="tab" id="tSeam" aria-selected="false">2 · The join</button>
+    <button role="tab" id="tRoute" aria-selected="false">3 · Route</button>
+  </div>
+  <div id="pLand" style="display:contents">
+    <h2>Drag the dots</h2>
+    <p>For each place you can recognise, drag its <b>dot</b> (not the label) onto the exact summit, lake or town. Use <b>Show</b> to jump to it and zoom in with the scroll wheel. Mark anything you can't pick out as <b>Can't see</b>.</p>
+    <div class="status" id="calStatus">Loading saved placements…</div>
+    <div class="list" id="calList"></div>
+  </div>
+  <div id="pSeam" style="display:none">
+    <h2>Line up the join</h2>
+    <p>The phone sweep overlaps itself near north-north-west, and the far mountains don't quite match. Open the aligner and drag the top picture until the <b>distant mountain ridges</b> line up with the one underneath. Ignore the near ground.</p>
+    <button class="btn primary" id="openSeam">Open the aligner</button>
+    <div class="status" id="seamStatus"></div>
+  </div>
+  <div id="pRoute" style="display:none">
+    <h2>Check the route</h2>
+    <p>The red line is your walk, traced from your topo map and draped on the terrain. Dotted parts are hidden behind hills. If it's wrong somewhere, say where in chat.</p>
+    <button class="btn primary" id="routeOk">The route looks right</button>
+    <div class="status" id="routeStatus"></div>
+  </div>
+</aside>
+
+<div class="seam" id="seam" hidden>
+  <div class="sbar">
+    <b style="font-family:var(--f-display);font-size:20px;text-transform:uppercase">Line up the distant ridges</b>
+    <label for="seamOp">Top picture <input type="range" id="seamOp" min="0" max="100" value="55"></label>
+    <label for="seamFlick"><input type="checkbox" id="seamFlick"> Flicker</label>
+    <label for="seamZoom">Zoom <select id="seamZoom"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option></select></label>
+  </div>
+  <div class="vp" id="seamVp" tabindex="0" aria-label="Drag to align. Arrow keys nudge by one pixel, Shift by ten."><canvas id="seamB"></canvas><canvas id="seamA"></canvas></div>
+  <div class="sbar"><span class="status" id="seamOff"></span><span style="flex:1"></span>
+    <button class="btn" id="seamCancel">Cancel</button><button class="btn primary" id="seamSave">Save alignment</button></div>
+</div>
+
+<script>
+(async () => {
+"use strict";
+const P = window.__pano; if (!P) return;
+const $ = (id) => document.getElementById(id);
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+document.querySelector(".card").style.display = "none";
+document.querySelector(".head .eyebrow").textContent = "Calibration · help line everything up";
+P.poiLayer.classList.add("cal-on");
+P.PHOTOS.forEach((p) => { p.el.style.display = "none"; });
+
+let db = null;
+try { db = await claude.use("db"); } catch (_) { db = null; }
+const status = $("calStatus");
+const items = [...P.POIS].sort((a, b) => a.bearing - b.bearing);
+const state = {};
+if (db) {
+  try {
+    const snap = await db.collection("landmarks").get();
+    snap.docs.forEach((d) => { state[d.id] = d.data(); });
+  } catch (e) { status.textContent = "Couldn't read saved placements (" + (e.code || e.message) + ")."; }
+}
+items.forEach((p) => {
+  const st = state[slug(p.name)];
+  if (st && st.status === "placed") { p.calib = { b: st.bandBearing, e: st.bandElev }; p.el.classList.add("placed"); }
+});
+
+function render() {
+  const list = $("calList"); list.innerHTML = "";
+  let n = 0;
+  items.forEach((p) => {
+    const st = state[slug(p.name)] || {};
+    if (st.status) n++;
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<b>${p.name}</b><div class="acts"><button data-a="show">Show</button><button data-a="skip">${st.status === "cant_see" ? "Undo" : "Can't see"}</button>${st.status === "placed" ? '<button data-a="reset">Reset</button>' : ""}</div>
+      <small>${p.kind} · ${(p.dist / 1000).toFixed(1)} km · <span class="chip ${st.status === "placed" ? "placed" : st.status === "cant_see" ? "skip" : ""}">${st.status === "placed" ? "Placed" : st.status === "cant_see" ? "Can't see" : "To do"}</span></small>`;
+    row.querySelector('[data-a="show"]').onclick = () => { const b = p.calib ? p.calib.b + P.BAND_YAW : p.bearing; const e = p.calib ? p.calib.e : p.elev * P.R2D; P.flyTo(b, e + 2, 26); };
+    row.querySelector('[data-a="skip"]').onclick = () => save(p, st.status === "cant_see" ? null : { status: "cant_see" });
+    const r = row.querySelector('[data-a="reset"]'); if (r) r.onclick = () => { delete p.calib; p.el.classList.remove("placed"); save(p, null); };
+    list.appendChild(row);
+  });
+  status.textContent = db ? `${n} of ${items.length} done · saved automatically` : "Saving isn't available here. Open this page in Claude while signed in.";
+}
+async function save(p, data) {
+  const key = slug(p.name);
+  if (data) state[key] = { ...data, name: p.name, at: new Date().toISOString() }; else delete state[key];
+  render();
+  if (!db) return;
+  try {
+    if (data) await db.doc("landmarks/" + key).set(state[key]);
+    else await db.doc("landmarks/" + key).delete();
+  } catch (e) { status.textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
+}
+render();
+
+// screen -> band coordinates (same maths as the viewer's shader)
+function unproject(sx, sy) {
+  const [W, H] = P.size(), v = P.view, th = P.tanHalf();
+  const x = ((sx / W) * 2 - 1) * th * (W / H), y = (1 - (sy / H) * 2) * th;
+  const l = Math.hypot(x, y, 1); let dx = x / l, dy = y / l, dz = 1 / l;
+  const cp = Math.cos(v.pitch * P.D2R), sp = Math.sin(v.pitch * P.D2R);
+  const ry = dy * cp + dz * sp, rz = -dy * sp + dz * cp;
+  const az = v.yaw + Math.atan2(dx, rz) * P.R2D, el = Math.asin(Math.max(-1, Math.min(1, ry))) * P.R2D;
+  return { b: (((az - P.BAND_YAW) % 360) + 360) % 360, e: el };
+}
+// drag the dot of a landmark
+let drag = null;
+items.forEach((p) => {
+  const dot = p.el.querySelector(".dot");
+  dot.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault(); ev.stopPropagation(); dot.setPointerCapture(ev.pointerId);
+    const r = P.canvas.getBoundingClientRect();
+    drag = { p, r }; p.el.classList.add("dragging");
+  });
+  dot.addEventListener("pointermove", (ev) => {
+    if (!drag || drag.p !== p) return;
+    const c = unproject(ev.clientX - drag.r.left, ev.clientY - drag.r.top); p.calib = c;
+  });
+  const end = () => {
+    if (!drag || drag.p !== p) return;
+    p.el.classList.remove("dragging"); drag = null;
+    if (p.calib) { p.el.classList.add("placed"); save(p, { status: "placed", bandBearing: +p.calib.b.toFixed(4), bandElev: +p.calib.e.toFixed(4), modelBearing: +p.bearing.toFixed(4), modelElev: +(p.elev * P.R2D).toFixed(4), fov: +P.view.fov.toFixed(1) }); }
+  };
+  dot.addEventListener("pointerup", end); dot.addEventListener("pointercancel", end);
+});
+
+// tabs
+const tabs = [["tLand", "pLand"], ["tSeam", "pSeam"], ["tRoute", "pRoute"]];
+tabs.forEach(([t, pn]) => { $(t).onclick = () => tabs.forEach(([t2, p2]) => { $(t2).setAttribute("aria-selected", t2 === t); $(p2).style.display = t2 === t ? "contents" : "none"; }); });
+
+// route check
+$("routeOk").onclick = async () => {
+  $("routeStatus").textContent = "Thanks, noted.";
+  if (db) try { await db.doc("checks/route").set({ ok: true, at: new Date().toISOString() }); } catch (e) { $("routeStatus").textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
+};
+
+// seam aligner: A = start of the sweep, B = end of the sweep (pano2 pixels)
+const SEAM = { a: "__SEAM_A__", b: "__SEAM_B__", aOrigin: [40, 600], bOrigin: [17760, 820], guess: [18150, 345] };
+const imA = new Image(), imB = new Image(); imA.src = SEAM.a; imB.src = SEAM.b;
+let off = [SEAM.guess[0] - SEAM.bOrigin[0] + SEAM.aOrigin[0], SEAM.guess[1] - SEAM.bOrigin[1] + SEAM.aOrigin[1]];
+if (db) try { const d = await db.doc("seam/far").get(); if (d.exists) off = [d.data().ox, d.data().oy]; $("seamStatus").textContent = d.exists ? "Saved alignment loaded." : ""; } catch (_) {}
+const vp = $("seamVp"), cA = $("seamA"), cB = $("seamB");
+let zoom = 2, pan = [0, 0], flick = null;
+function drawSeam() {
+  const r = vp.getBoundingClientRect(); const dpr = Math.min(2, devicePixelRatio || 1);
+  for (const c of [cA, cB]) { c.width = r.width * dpr; c.height = r.height * dpr; c.style.width = r.width + "px"; c.style.height = r.height + "px"; }
+  // centre the view on A
+  const cx = r.width / 2 - (off[0] + imA.width / 2) * zoom + pan[0], cy = r.height / 2 - (off[1] + imA.height / 2) * zoom + pan[1];
+  const b = cB.getContext("2d"); b.setTransform(dpr * zoom, 0, 0, dpr * zoom, cx * dpr, cy * dpr); b.imageSmoothingEnabled = zoom < 2; b.drawImage(imB, 0, 0);
+  const a = cA.getContext("2d"); a.setTransform(dpr * zoom, 0, 0, dpr * zoom, cx * dpr, cy * dpr); a.imageSmoothingEnabled = zoom < 2;
+  a.globalAlpha = $("seamOp").value / 100; a.drawImage(imA, off[0], off[1]);
+  const dx = off[0] + SEAM.bOrigin[0] - SEAM.aOrigin[0], dy = off[1] + SEAM.bOrigin[1] - SEAM.aOrigin[1];
+  $("seamOff").textContent = `Offset ${off[0]}, ${off[1]} px (loop ${dx} px across, ${dy} px down)`;
+}
+$("openSeam").onclick = () => { $("seam").hidden = false; requestAnimationFrame(drawSeam); vp.focus(); };
+$("seamCancel").onclick = () => { $("seam").hidden = true; };
+$("seamOp").oninput = drawSeam;
+$("seamZoom").onchange = (e) => { zoom = +e.target.value; drawSeam(); };
+$("seamFlick").onchange = (e) => { clearInterval(flick); if (e.target.checked) flick = setInterval(() => { cA.style.visibility = cA.style.visibility === "hidden" ? "visible" : "hidden"; }, 450); else cA.style.visibility = "visible"; };
+let sd = null;
+vp.addEventListener("pointerdown", (e) => { vp.setPointerCapture(e.pointerId); sd = [e.clientX, e.clientY, off[0], off[1]]; });
+vp.addEventListener("pointermove", (e) => { if (!sd) return; off = [Math.round(sd[2] + (e.clientX - sd[0]) / zoom), Math.round(sd[3] + (e.clientY - sd[1]) / zoom)]; drawSeam(); });
+vp.addEventListener("pointerup", () => { sd = null; });
+vp.addEventListener("keydown", (e) => {
+  const k = e.shiftKey ? 10 : 1, m = { ArrowLeft: [-k, 0], ArrowRight: [k, 0], ArrowUp: [0, -k], ArrowDown: [0, k] }[e.key];
+  if (m) { e.preventDefault(); e.stopPropagation(); off = [off[0] + m[0], off[1] + m[1]]; drawSeam(); }
+});
+window.addEventListener("resize", () => { if (!$("seam").hidden) drawSeam(); });
+$("seamSave").onclick = async () => {
+  const dx = off[0] + SEAM.bOrigin[0] - SEAM.aOrigin[0], dy = off[1] + SEAM.bOrigin[1] - SEAM.aOrigin[1];
+  $("seam").hidden = true; $("seamStatus").textContent = "Alignment saved.";
+  if (db) try { await db.doc("seam/far").set({ ox: off[0], oy: off[1], loopDx: dx, loopDy: dy, at: new Date().toISOString() }); } catch (e) { $("seamStatus").textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
+};
+})();
+</script>

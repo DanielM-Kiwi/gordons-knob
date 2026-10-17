@@ -17,11 +17,17 @@ for token, value in {
     "__CREW_PATCH__": data_uri("assets/crew-patch.webp", "image/webp"),
     "__PHOTO_CREW__": data_uri("assets/summit-crew.jpg"),
     "__PHOTO_MOT__": data_uri("assets/toward-motueka.jpg"),
+    "__ROUTE__": (root / "data/route.json").read_text().strip(),
 }.items():
     assert token in body, token
     body = body.replace(token, value)
 
+# calibration build: same page plus the calibration panel, saving to the artifact database
+seam = root / "data"
+cal = body.replace("__CALIBRATE__", "1").replace("<title>Gordons Knob Panorama</title>", "<title>Gordons Knob Calibration</title>", 1) + (root / "src/calibrate.html").read_text()     .replace("__SEAM_A__", "data:image/webp;base64," + base64.b64encode((seam / "seam-a.webp").read_bytes()).decode())     .replace("__SEAM_B__", "data:image/webp;base64," + base64.b64encode((seam / "seam-b.webp").read_bytes()).decode())
+body = body.replace("__CALIBRATE__", "0")
 (root / "dist").mkdir(exist_ok=True)
+(root / "dist/calibrate.html").write_text(cal)
 (root / "dist/artifact.html").write_text(body)
 (root / "index.html").write_text(
     '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
