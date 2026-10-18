@@ -6,6 +6,13 @@ Interactive 360° view from the summit of Gordons Knob (1,592 m, Gordon Range, M
 - `dist/artifact.html` has the same content without the document wrapper, for publishing as a Claude artifact.
 - `assets/` holds the stitched 360° band (`gordons-knob-360.jpg`, 12288 × 3072, +36° to −54°), built from all four summit photos, and the two photos shown in the photo markers. The stitching pipeline is in `tools/stitch/`.
 
+## GitHub Pages
+
+`index.html` at the repo root is the whole site (self-contained, ~12 MB), and `.nojekyll` makes Pages serve it as-is.
+To publish: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main`, folder `/ (root)` → Save.**
+The site appears at `https://danielm-kiwi.github.io/gordons-knob/` a minute or two later, and updates on every push to `main`.
+After changing anything in `src/`, run `python3 build.py` and commit the rebuilt `index.html`.
+
 ## Stack
 
 - Raw WebGL 2 equirectangular viewer: one fragment shader with mipmapped, seam-safe sampling.
