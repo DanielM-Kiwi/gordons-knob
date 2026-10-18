@@ -911,7 +911,11 @@ new ResizeObserver(() => sizeMap()).observe(mapCv);
 
 /* ---------------- Walking route ---------------- */
 const routeCv = $("route"), rctx = routeCv.getContext("2d");
-const RP = ROUTE.pts.map(([e, n, z], i) => {
+// a hand-traced route is stored in band coordinates with each point's distance; otherwise metres from the camera
+const RP = ROUTE.trace ? ROUTE.trace.map(([b, e, d, hid]) => {
+  const [tb, te] = bandToTrue(b, e);
+  return { d, b: tb, el: te * D2R, vis: !hid };
+}) : ROUTE.pts.map(([e, n, z], i) => {
   const d = Math.hypot(e, n);
   // heights are relative to the ground under the camera, so nearby ground is exact
   const el = ROUTE.zRelative ? Math.atan2(z + 0.4 - VIEWPOINT.eye - (d * d) / (2 * EARTH_R) * REFRACT, Math.max(d, 1)) : angleTo(z + 0.4, Math.max(d, 1));
@@ -928,7 +932,7 @@ function drawRoute(now) {
   c.lineCap = "round"; c.lineJoin = "round";
   let prev = null;
   for (let i = 0; i <= last; i++) {
-    const p = RP[i]; if (p.d < 45) { prev = null; continue; }
+    const p = RP[i]; if (p.d < 12) { prev = null; continue; }
     const s = project(p.b, p.el);
     if (!s || s[0] < -200 || s[0] > W + 200 || s[1] < -200 || s[1] > H + 200) { prev = null; continue; }
     if (prev) {
@@ -970,7 +974,7 @@ function frame(now) {
     view.vy *= 0.92; view.vp *= 0.9;
     if (Math.abs(view.vy) < 0.002) view.vy = 0;
     const idle = now - idleAt;
-    if (!reduceMotion && (spin || idle > 14000) && !selected) view.yaw += 0.025 * Math.min(1, (idle - (spin ? 0 : 14000)) / 3000 + (spin ? 1 : 0));
+    if (!reduceMotion && !CALIBRATE && (spin || idle > 14000) && !selected) view.yaw += 0.025 * Math.min(1, (idle - (spin ? 0 : 14000)) / 3000 + (spin ? 1 : 0));
   }
   if (gl && texReady) {
     gl.uniform2f(uni.res, canvas.width, canvas.height);

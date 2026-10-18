@@ -35,8 +35,8 @@
 <aside class="cal" id="cal" aria-label="Calibration">
   <div class="tabs" role="tablist">
     <button role="tab" id="tLand" aria-selected="true">1 · Landmarks</button>
-    <button role="tab" id="tSeam" aria-selected="false">2 · The join</button>
-    <button role="tab" id="tRoute" aria-selected="false">3 · Route</button>
+    <button role="tab" id="tRoute" aria-selected="false">2 · Trace the route</button>
+    <button role="tab" id="tSeam" aria-selected="false" hidden>The join</button>
   </div>
   <div id="pLand" style="display:contents">
     <h2>Drag the dots</h2>
@@ -51,10 +51,16 @@
     <div class="status" id="seamStatus"></div>
   </div>
   <div id="pRoute" style="display:none">
-    <h2>Check the route</h2>
-    <p>The red line is your walk, traced from your topo map and draped on the terrain. Dotted parts are hidden behind hills. If it's wrong somewhere, say where in chat.</p>
-    <button class="btn primary" id="routeOk">The route looks right</button>
+    <h2>Trace the route</h2>
+    <p>Click along where you walked, <b>starting at the road end</b> and finishing at the top. Click the actual path on the ground; zoom in for the near bits. Points only need to be every few hundred metres on the far spur, closer together near the top.</p>
+    <p>For a stretch you can't see (behind a hill), tick <b>Hidden</b>, click roughly where it goes, then untick it. Dragging still looks around.</p>
+    <label class="status" for="trHid" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text)"><input type="checkbox" id="trHid"> Hidden behind a hill</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn" id="trUndo">Undo last point</button><button class="btn" id="trClear">Clear</button>
+      <button class="btn" id="trOld">Hide old line</button><button class="btn primary" id="trSave">Save trace</button>
+    </div>
     <div class="status" id="routeStatus"></div>
+    <button class="btn" id="routeOk" hidden></button>
   </div>
 </aside>
 
@@ -167,6 +173,50 @@ $("routeOk").onclick = async () => {
   $("routeStatus").textContent = "Thanks, noted.";
   if (db) try { await db.doc("checks/route").set({ ok: true, at: new Date().toISOString() }); } catch (e) { $("routeStatus").textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
 };
+
+// route tracing: points in band coordinates, drawn live
+const trace = [];
+if (db) try { const d = await db.doc("route/trace").get(); if (d.exists && Array.isArray(d.data().pts)) d.data().pts.forEach((q) => trace.push(q)); } catch (_) {}
+const trCv = document.createElement("canvas"); trCv.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2";
+document.getElementById("app").insertBefore(trCv, document.getElementById("pois"));
+let tracing = false, oldHidden = false, td = null;
+const trStatus = () => { $("routeStatus").textContent = trace.length + " points" + (db ? "" : " · saving isn't available here"); };
+trStatus();
+function drawTrace() {
+  const [W, H] = P.size(), dpr = Math.min(2, devicePixelRatio || 1);
+  if (trCv.width !== Math.round(W * dpr)) { trCv.width = Math.round(W * dpr); trCv.height = Math.round(H * dpr); }
+  const c = trCv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+  if (tracing || trace.length) {
+    let prev = null;
+    trace.forEach(([b, e, hid], i) => {
+      const [tb, te] = P.bandToTrue(b, e); const s = P.project(tb, te * P.D2R);
+      if (!s) { prev = null; return; }
+      if (prev) { c.setLineDash(hid ? [4, 5] : []); c.strokeStyle = hid ? "rgba(255,230,0,.8)" : "#ffe600"; c.lineWidth = 2.5; c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(s[0], s[1]); c.stroke(); }
+      c.setLineDash([]); c.fillStyle = i === trace.length - 1 ? "#fff" : "#ffe600"; c.strokeStyle = "#000"; c.lineWidth = 1;
+      c.beginPath(); c.arc(s[0], s[1], 3.5, 0, Math.PI * 2); c.fill(); c.stroke();
+      prev = s;
+    });
+  }
+  requestAnimationFrame(drawTrace);
+}
+requestAnimationFrame(drawTrace);
+P.canvas.addEventListener("pointerdown", (e) => { td = [e.clientX, e.clientY]; });
+P.canvas.addEventListener("click", (e) => {
+  if (!tracing || !td || Math.hypot(e.clientX - td[0], e.clientY - td[1]) > 5) return;
+  const r = P.canvas.getBoundingClientRect(); const q = unproject(e.clientX - r.left, e.clientY - r.top);
+  trace.push([+q.b.toFixed(4), +q.e.toFixed(4), $("trHid").checked ? 1 : 0]); trStatus();
+});
+$("trUndo").onclick = () => { trace.pop(); trStatus(); };
+$("trClear").onclick = () => { trace.length = 0; trStatus(); };
+$("trOld").onclick = () => { oldHidden = !oldHidden; document.getElementById("route").style.opacity = oldHidden ? 0 : ""; $("trOld").textContent = oldHidden ? "Show old line" : "Hide old line"; };
+window.addEventListener("keydown", (e) => { if (tracing && (e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); trace.pop(); trStatus(); } });
+$("trSave").onclick = async () => {
+  if (!db) { $("routeStatus").textContent = "Saving isn't available here. Open this page in Claude while signed in."; return; }
+  try { await db.doc("route/trace").set({ pts: trace, at: new Date().toISOString() }); $("routeStatus").textContent = trace.length + " points · saved"; }
+  catch (e) { $("routeStatus").textContent = "Couldn't save (" + (e.code || e.message) + ")."; }
+};
+$("tRoute").addEventListener("click", () => { tracing = true; document.getElementById("cal").style.width = "min(320px,calc(100vw - 32px))"; });
+$("tLand").addEventListener("click", () => { tracing = false; });
 
 // seam aligner: A = start of the sweep, B = end of the sweep (pano2 pixels)
 const SEAM = { a: "__SEAM_A__", b: "__SEAM_B__", aOrigin: [40, 600], bOrigin: [17760, 820], guess: [18150, 345] };
