@@ -527,13 +527,15 @@ void main(){
   if (uv.x < .5) { float w = tileA.y - tileA.x; c = textureGrad(texA, vec2((uv.x - tileA.x) / w, uv.y), vec2(dx.x / w, dx.y), vec2(dy.x / w, dy.y)).rgb; }
   else           { float w = tileB.y - tileB.x; c = textureGrad(texB, vec2((uv.x - tileB.x) / w, uv.y), vec2(dx.x / w, dx.y), vec2(dy.x / w, dy.y)).rgb; }
   if (hasPatch > .5) {
-    // full-resolution summit-crew patch, in band bearings (u * 2PI) and elevation
+    // full-resolution summit-crew patch, in band bearings (u * 2PI) and elevation.
+    // Derivatives are taken outside the box test: inside a branch they are undefined at the
+    // box edge and pick a coarse mip, which showed as faint lines around the patch.
     vec2 pu = vec2((uv.x * 2. * PI - patchR.x) / (patchR.y - patchR.x), (patchR.w - el) / (patchR.w - patchR.z));
-    if (pu.x > 0. && pu.x < 1. && pu.y > 0. && pu.y < 1.) {
-      vec2 px = dFdx(pu), py = dFdy(pu);
-      vec4 p = textureGrad(texP, pu, px, py);
-      c = mix(c, p.rgb, p.a);
-    }
+    vec2 px = dFdx(pu), py = dFdy(pu);
+    vec4 p = textureGrad(texP, clamp(pu, 0., 1.), px, py);
+    vec2 edge = smoothstep(0., .03, pu) * smoothstep(0., .03, 1. - pu);
+    float a = p.a * edge.x * edge.y;
+    c = mix(c, p.rgb, a);
   }
   if (el > vTop) c = mix(c, zen, smoothstep(vTop, PI / 2., el));
   if (el < vBot) c = mix(c, nad, smoothstep(vBot, vBot - .45, el));
