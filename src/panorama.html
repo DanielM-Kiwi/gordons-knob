@@ -928,7 +928,7 @@ function drawRoute(now) {
   const reveal = reduceMotion ? 1 : Math.min(1, Math.max(0, (now - intro.t0 - 2600) / 3200));
   const last = Math.floor(reveal * (RP.length - 1));
   const pxPerRad = H / (2 * tanHalf());            // screen pixels per radian at the centre
-  const TRACK_W = 2.5;                              // drawn as a 2.5 m wide line on the ground
+  const TRACK_W = 1.5;                              // drawn as a 1.5 m wide line on the ground
   c.lineCap = "round"; c.lineJoin = "round";
   let prev = null;
   for (let i = 0; i <= last; i++) {
@@ -936,7 +936,7 @@ function drawRoute(now) {
     const s = project(p.b, p.el);
     if (!s || s[0] < -200 || s[0] > W + 200 || s[1] < -200 || s[1] > H + 200) { prev = null; continue; }
     if (prev) {
-      const w = Math.max(0.8, Math.min(14, TRACK_W / p.d * pxPerRad));
+      const w = Math.max(0.8, Math.min(9, TRACK_W / p.d * pxPerRad));
       const hid = !(p.vis && prev.p.vis);
       if (hid) {
         const wh = Math.max(0.8, Math.min(w * 0.6, 3)); c.setLineDash([wh * 1.4, wh * 3]); c.strokeStyle = "rgba(255,92,112,.7)"; c.lineWidth = wh;
