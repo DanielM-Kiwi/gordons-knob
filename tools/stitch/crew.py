@@ -23,6 +23,9 @@ def render(ppd_out):
     inside=ok&(mx>=0)&(mx<w-1)&(my>=0)&(my<h-1)
     edge=np.clip(np.minimum(np.minimum(mx,w-1-mx)/w,np.minimum(my,h-1-my)/h)/0.05,0,1)
     a=a*inside*edge
+    # fade to nothing over the last degree of the patch box, so it never shows as a rectangle
+    fb=np.clip(np.minimum(Bg-B0,B1-Bg)/1.2,0,1); fe=np.clip(np.minimum(Eg-E0,E1-Eg)/1.0,0,1)
+    a=a*(fb*fb*(3-2*fb))*(fe*fe*(3-2*fe))
     return col,a,Bg,Eg
 # low-res (band) render for gain matching and baking
 col,a,Bg,Eg=render(ppd)
@@ -34,7 +37,8 @@ gain=np.array([np.median(base[...,k][gm])/max(1,np.median(col[...,k][gm])) for k
 print('crew gain BGR',gain)
 out=base*(1-a[...,None])+col*gain*a[...,None]
 img[r0:r0+col.shape[0], c0:c0+col.shape[1]]=out
-cv2.imwrite(S+'/band_final.png',np.clip(img,0,255).astype(np.uint8))
+import os
+if not os.environ.get('PATCH_ONLY'): cv2.imwrite(S+'/band_final.png',np.clip(img,0,255).astype(np.uint8))
 # high-res patch at the photo's native angular resolution
 ppd_hi=fp*math.pi/180
 colh,ah,_,_=render(ppd_hi)

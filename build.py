@@ -18,6 +18,7 @@ for token, value in {
     "__PHOTO_CREW__": data_uri("assets/summit-crew.jpg"),
     "__PHOTO_MOT__": data_uri("assets/toward-motueka.jpg"),
     "__ROUTE__": (root / "data/route.json").read_text().strip(),
+    "__PINS__": (root / "data/pins.json").read_text().strip(),
 }.items():
     assert token in body, token
     body = body.replace(token, value)
